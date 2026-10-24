@@ -16,3 +16,81 @@
 .wx-accents{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:8px}.wx-swatch{height:24px;width:24px;border-radius:50%;border:2px solid #ffffff60;background:var(--accent)}.wx-swatch-blue{background:#4c91f4}.wx-swatch-violet{background:#9a80ff}.wx-swatch-cyan{background:#62d4dc}.wx-swatch-green{background:#71dcad}.wx-swatch-amber{background:#ebbc68}.wx-swatch-rose{background:#f59abd}.wx-swatch-default{background:conic-gradient(#4c91f4,#9a80ff,#71dcad,#4c91f4)}.wx-density{display:grid;grid-template-columns:1fr 1fr;gap:10px}.wx-appearance-note{font-size:12px;color:var(--muted);margin:4px 0 20px;line-height:1.6}
 :root[data-density=compact] .topic-row{padding-top:11px;padding-bottom:11px}:root[data-density=compact] .post-card{padding-top:16px;padding-bottom:16px}:root[data-density=compact] .space-card{min-height:100px;padding-top:12px;padding-bottom:12px}:root[data-density=compact] .nav-item,:root[data-density=compact] .category-link{padding-top:8px;padding-bottom:8px}:root[data-density=compact] .right-column{gap:12px}
 @media(max-width:740px){.topbar-actions>.wx-appearance-button{display:inline-flex;width:36px;height:36px;padding:7px}.wx-appearance-label{display:none}.wx-themes{grid-template-columns:repeat(3,minmax(0,1fr))}.wx-accents{grid-template-columns:repeat(4,minmax(0,1fr))}.wx-choice-body{font-size:11px;min-height:44px}.wx-fieldset{margin-bottom:20px}}
+
+/* Focused discussion layout and a readable writing surface. */
+.wx-thread-page>.page-header{display:none}
+.wx-thread-page .workspace-grid{display:block;max-width:1120px;margin-inline:auto}
+.wx-thread-page .right-column{display:none}
+.wx-thread-page .breadcrumb{font-size:13px;line-height:1.6;flex-wrap:wrap;margin-bottom:18px}
+.wx-thread-page .thread-head{padding:28px 32px;border-top:3px solid var(--accent-solid)}
+.wx-thread-page .thread-head h1{font-size:clamp(25px,2.6vw,36px);line-height:1.25;letter-spacing:-.8px;margin:16px 0;overflow-wrap:anywhere}
+.wx-thread-page .thread-head .topic-meta{font-size:13px;gap:9px;flex-wrap:wrap}
+.wx-thread-page .thread-head .tag{font-size:11px;padding:5px 9px}
+.wx-thread-page .thread-head-actions{gap:10px;margin-top:22px}
+.wx-thread-page .thread-head-actions .button{font-size:13px;min-height:42px;white-space:normal;text-align:center}
+.thread-moderation{margin-top:20px;padding-top:14px;border-top:1px solid var(--line-strong)}
+.thread-moderation summary{cursor:pointer;color:var(--muted);font-size:12px;width:fit-content;padding:5px 0;display:flex;align-items:center;gap:6px;list-style:none}
+.thread-moderation summary::after,.composer-attachment summary::after{content:'+';margin-left:auto;font-size:18px}
+.thread-moderation[open] summary::after,.composer-attachment[open] summary::after{content:'−'}
+.thread-moderation summary .icon{width:15px;height:15px;vertical-align:middle;margin-right:6px}
+.wx-thread-page .thread-moderation .thread-head-actions{margin-top:12px}
+.wx-thread-page .post-card{padding:26px 32px}
+.wx-thread-page .post-author strong{font-size:15px}
+.wx-thread-page .post-author small,.wx-thread-page .post-number{font-size:12px}
+.wx-thread-page .role-badge{font-size:9px}
+.wx-thread-page .post-body{font-size:16px;line-height:1.85;color:var(--text);margin-top:22px;max-width:85ch}
+.wx-thread-page .post-body pre,.wx-thread-page .post-body table{font-size:14px}
+.wx-thread-page .post-body pre{max-width:100%;white-space:pre;overflow:auto}
+.wx-thread-page .post-body table{display:block;max-width:100%;overflow:auto}
+.wx-thread-page .post-actions{margin-top:24px;gap:12px;flex-wrap:wrap}
+.wx-thread-page .post-actions-group{flex-wrap:wrap}
+.wx-thread-page .post-actions .subtle-button{font-size:13px;min-height:40px;padding:8px 10px}
+.wx-thread-page .reaction-button{min-height:38px;min-width:50px;font-size:13px}
+.wx-thread-page .reply-panel{padding:26px 32px;scroll-margin-top:20px}
+.wx-thread-page .reply-header h3{font-size:18px}
+.wx-thread-page .reply-header small,.wx-thread-page .reply-bottom small{font-size:12px;line-height:1.6}
+.wx-thread-page .reply-bottom{gap:16px;flex-wrap:wrap}
+.topbar-context{min-width:0}
+#topbar-label{overflow:hidden;text-overflow:ellipsis;max-width:240px}
+.app-dialog.wx-composer{width:860px;max-width:calc(100vw - 32px);max-height:92dvh}
+.wx-composer .dialog-header{padding:22px 30px 18px;position:sticky;top:0;background:var(--panel);z-index:2;border-bottom:1px solid var(--line-strong);margin-bottom:20px}
+.wx-composer .dialog-header h2{font-size:25px;letter-spacing:-.5px}
+.wx-composer .dialog-header p{font-size:13px;line-height:1.6}
+.wx-composer .dialog-content{padding:0 30px 26px}
+.wx-composer .field{margin-bottom:20px}
+.wx-composer .field>span:first-child{font-size:14px;margin-bottom:9px}
+.wx-composer .field input,.wx-composer .field select{font-size:16px;min-height:46px;padding:12px 14px}
+.wx-composer input[name=title]{font-size:19px;font-weight:600}
+.wx-composer .field small{font-size:12px}
+.wx-composer .editor textarea,.wx-thread-page .editor textarea{font-size:16px;line-height:1.8;padding:18px;min-height:210px}
+.wx-composer [data-form=new-topic] .editor textarea{min-height:280px}
+.wx-composer .editor-toolbar,.wx-thread-page .editor-toolbar{flex-wrap:wrap;padding:8px;gap:5px}
+.wx-composer .editor-toolbar button,.wx-thread-page .editor-toolbar button{width:38px;height:38px}
+.wx-composer .editor-toolbar small,.wx-thread-page .editor-toolbar small{font-size:10px}
+.wx-composer .form-footer{position:sticky;bottom:0;background:var(--panel);padding:16px 0;border-top:1px solid var(--line-strong);margin-top:20px;z-index:1;gap:12px}
+.wx-composer .form-footer .button{font-size:14px;min-height:44px;white-space:normal}
+.wx-composer .composer-attachment{border:1px dashed var(--line-strong);border-radius:10px;padding:14px 16px;margin-top:18px}
+.composer-attachment summary{cursor:pointer;color:var(--muted);font-size:13px;line-height:1.5;display:flex;align-items:center;gap:6px;list-style:none}
+.composer-attachment summary .icon{width:16px;height:16px;vertical-align:middle;margin-right:6px}
+.wx-composer .composer-attachment .field{margin:12px 0 0}
+.wx-composer .composer-note{font-size:12px;color:var(--muted);margin:10px 0 0;line-height:1.6}
+@media(max-width:740px){
+ .wx-thread-page .thread-head,.wx-thread-page .post-card,.wx-thread-page .reply-panel{padding:20px 18px}
+ .wx-thread-page .thread-head h1{font-size:25px;letter-spacing:-.4px}
+ .wx-thread-page .thread-head .topic-meta{font-size:12px;gap:7px}
+ .wx-thread-page .breadcrumb{font-size:12px;gap:5px}
+ .wx-thread-page .post-body{font-size:16px;line-height:1.8}
+ .wx-thread-page .post-author strong{font-size:14px}
+ .wx-thread-page .thread-head-actions{gap:8px}
+ .wx-thread-page .thread-head-actions .button{flex:1 1 auto;min-height:44px;font-size:12px;padding:10px}
+ .wx-thread-page .reply-bottom .button{width:100%;min-height:44px}
+ .wx-thread-page .reply-bottom small{max-width:none}
+ .app-dialog.wx-composer{max-width:calc(100vw - 16px);max-height:96dvh;border-radius:12px}
+ .wx-composer .dialog-header{padding:20px 18px 16px}
+ .wx-composer .dialog-content{padding:0 18px 18px}
+ .wx-composer .dialog-header h2{font-size:22px}
+ .wx-composer input[name=title]{font-size:16px}
+ .wx-composer .form-footer{gap:8px}
+ .wx-composer .form-footer .button{font-size:13px;padding:10px 12px}
+ .wx-composer [data-form=new-topic] .editor textarea{min-height:220px}
+}

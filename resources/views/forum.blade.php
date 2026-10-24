@@ -11,10 +11,10 @@
     <link rel="icon" type="image/svg+xml" href="/assets/wojtex.svg?v=0.1.0-beta.1">
     <link rel="stylesheet" href="/assets/forum.css?v=0.1.0-beta.1">
     <script type="application/json" id="veyra-i18n">{!! json_encode($localePayload, JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT|JSON_UNESCAPED_UNICODE) !!}</script>
-    <link rel="stylesheet" href="/assets/wojtex.css?v=0.1.0-beta.1">
+    <link rel="stylesheet" href="/assets/wojtex.css?v=0.1.0-beta.1-topic1">
     <link rel="stylesheet" href="/assets/custom.css?v=0.1.0-beta.1">
     <script src="/assets/wojtex-appearance.js?v=0.1.0-beta.1"></script>
-    <script src="/assets/forum.js?v=0.1.0-beta.1" defer></script>
+    <script src="/assets/forum.js?v=0.1.0-beta.1-topic1" defer></script>
 </head>
 <body>
     <a class="skip-link" href="#main-content" data-i18n="ui.nav.skip">{{ __('ui.nav.skip') }}</a>

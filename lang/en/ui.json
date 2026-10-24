@@ -611,5 +611,7 @@
   "ui.appearance.saved_hint": "Your choice is saved automatically in this browser. Other members keep their own appearance.",
   "ui.appearance.storage_unavailable": "Preview works, but this browser is blocking saved preferences. Your choice may reset after reloading.",
   "ui.appearance.reset": "Reset to defaults",
-  "ui.appearance.done": "Done"
+  "ui.appearance.done": "Done",
+  "ui.topic.reply": "Reply",
+  "ui.topic.moderation": "Topic moderation"
 }

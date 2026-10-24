@@ -611,5 +611,7 @@
   "ui.appearance.saved_hint": "Wybór zapisuje się automatycznie w tej przeglądarce. Nie zmienia wyglądu innym użytkownikom.",
   "ui.appearance.storage_unavailable": "Podgląd działa, ale przeglądarka blokuje zapis ustawień. Wybór może zniknąć po odświeżeniu.",
   "ui.appearance.reset": "Przywróć domyślne",
-  "ui.appearance.done": "Gotowe"
+  "ui.appearance.done": "Gotowe",
+  "ui.topic.reply": "Odpowiedz",
+  "ui.topic.moderation": "Moderacja tematu"
 }

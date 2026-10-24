@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Discussion pages use one visible topic heading, readable 16px post text, a focused reading column, a reply shortcut and expandable moderator actions.
+- Wider topic/edit composer with larger fields and formatting controls, a sticky header/footer, and optional attachments in an expandable section.
+- New topics opened from a discussion inherit its category. Publishing starts at the top of the new topic.
+- Polish/English reply and moderation labels. Verified locally through real browser topic creation, replies and post editing; checked the composer/discussion at 390px and desktop widths. Existing appearance checks and 985-key language/source checks pass. Test-host deployment verified without adding test posts there.
+
 ## 0.1.0-beta.1 — 2026-10-24
 
 First public WojteX testing pre-release, based on the Veyra alpha.3-dev.54 prototype and the WojteX dev.55 appearance update.
