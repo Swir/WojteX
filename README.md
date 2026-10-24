@@ -4,6 +4,17 @@
 
 Samodzielnie hostowane forum z polskim i angielskim interfejsem, panelem administracji i wyborem wyglądu dla każdego odwiedzającego. Projekt rozwija wcześniejszy prototyp Veyra; nazwy niektórych wewnętrznych klas i ustawień zachowano dla zgodności.
 
+![WojteX Forum — strona główna w motywie nocnego granatu, z działami, dyskusjami, shoutboxem i rankingiem](docs/screenshots/wojtex-beta-desktop.jpg)
+
+*Rzeczywisty widok beta.1 na lokalnej instalacji testowej — nocny granat z niebieskim akcentem, interfejs angielski. Forum obsługuje również język polski.*
+
+<details>
+<summary>Panel zmiany wyglądu / Appearance settings</summary>
+
+![Panel wyglądu WojteX — wybór motywu, koloru akcentu i odstępów](docs/screenshots/wojtex-beta-appearance.jpg)
+
+</details>
+
 **Beta do testów na osobnej instalacji.** To nie jest jeszcze stabilne wydanie do zastąpienia działającej społeczności. Szczegóły sprawdzonych funkcji i ograniczeń: [kontrola wydania](docs/RELEASE_CHECKS.md).
 
 ## Pobierz i zainstaluj
