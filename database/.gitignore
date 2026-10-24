@@ -1,0 +1,6 @@
+*
+!.gitignore
+!migrations/
+!migrations/*.php
+!factories/
+!factories/*.php

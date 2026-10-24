@@ -1,0 +1,7 @@
+{
+  "id": "welcome",
+  "name": "Panel powitalny",
+  "description": "Własny nagłówek i powitanie na stronie głównej.",
+  "version": "0.1.0",
+  "api": 1
+}

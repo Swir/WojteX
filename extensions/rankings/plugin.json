@@ -1,0 +1,7 @@
+{
+  "id": "rankings",
+  "name": "Rankingi i odznaki",
+  "description": "Punkty za posty i reakcje w dostępnych działach.",
+  "version": "0.1.0",
+  "api": 1
+}

@@ -1,0 +1,95 @@
+{
+  "format": "veyra.mybb.v1",
+  "source_id": "mybb-fixture-1841",
+  "mybb_version": "1.8.41",
+  "source_url": "https://forum.example.test",
+  "exported_at": "2026-10-22T10:00:00Z",
+  "users": [
+    {
+      "uid": 7,
+      "username": "Archiwista",
+      "email": "archive@example.test",
+      "password": "9533d09afd4f92afe3985621e8067fc4",
+      "salt": "VeyraT3s",
+      "password_scheme": "mybb-md5",
+      "regdate": 1609459200,
+      "usergroup": 4,
+      "is_banned": 0
+    },
+    {
+      "uid": 8,
+      "username": "Czytelnik",
+      "email": "reader@example.test",
+      "password": "9533d09afd4f92afe3985621e8067fc4",
+      "salt": "VeyraT3s",
+      "password_scheme": "mybb-md5",
+      "regdate": 1609545600,
+      "usergroup": 2,
+      "is_banned": 0
+    }
+  ],
+  "forums": [
+    {
+      "fid": 3,
+      "pid": 0,
+      "name": "Archiwum społeczności",
+      "description": "Importowany dział testowy.",
+      "disporder": 1
+    },
+    {
+      "fid": 4,
+      "pid": 3,
+      "name": "Pomoc techniczna",
+      "description": "Pytania i rozwiązania.",
+      "disporder": 2
+    }
+  ],
+  "threads": [
+    {
+      "tid": 42,
+      "fid": 4,
+      "uid": 7,
+      "username": "Archiwista",
+      "subject": "Pierwszy temat po migracji",
+      "dateline": 1610000000,
+      "lastpost": 1610000200,
+      "sticky": 1,
+      "closed": 0,
+      "visible": 1,
+      "views": 127
+    }
+  ],
+  "posts": [
+    {
+      "pid": 100,
+      "tid": 42,
+      "fid": 4,
+      "uid": 7,
+      "username": "Archiwista",
+      "message": "[b]Witaj, społeczności![/b]\nPolskie znaki: ąęłńóśźż.",
+      "dateline": 1610000000,
+      "edittime": 0,
+      "visible": 1
+    },
+    {
+      "pid": 101,
+      "tid": 42,
+      "fid": 4,
+      "uid": 8,
+      "username": "Czytelnik",
+      "message": "[quote]Witaj![/quote]\nDane mają zachować autorów i daty.",
+      "dateline": 1610000200,
+      "edittime": 0,
+      "visible": 1
+    }
+  ],
+  "omitted": {
+    "attachments": 2,
+    "privatemessages": 1,
+    "polls": 0,
+    "reputation": 0,
+    "userfields": 2,
+    "unpublished_or_redirect_threads": 0,
+    "unpublished_or_excluded_posts": 0
+  }
+}

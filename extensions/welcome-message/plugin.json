@@ -1,0 +1,8 @@
+{
+  "id": "welcome-message",
+  "name": "Powitanie nowych osób",
+  "description": "Przykładowa własna wtyczka: powitanie w shoutboxie po rejestracji.",
+  "version": "0.1.0",
+  "api": 1,
+  "entry": "plugin.php"
+}

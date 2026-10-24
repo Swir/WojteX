@@ -1,0 +1,11 @@
+import { spawn } from 'node:child_process';
+import path from 'node:path';
+const executable = process.env.VEYRA_PHP_BINARY || 'php';
+const port = process.env.PORT || '4173';
+const root = process.cwd();
+const franken = path.basename(executable).includes('frankenphp');
+const args = franken ? ['php-server','--listen',`0.0.0.0:${port}`,'--root',path.join(root,'public')] : ['-S',`0.0.0.0:${port}`,'-t',path.join(root,'public'),path.join(root,'public/router.php')];
+const child = spawn(executable,args,{stdio:'inherit',env:process.env});
+child.on('error',e=>{console.error(`PHP runtime unavailable: ${e.message}. Install PHP 8.3+ or set VEYRA_PHP_BINARY.`);process.exit(1)});
+for(const signal of ['SIGINT','SIGTERM'])process.on(signal,()=>child.kill(signal));
+child.on('exit',code=>process.exit(code??0));

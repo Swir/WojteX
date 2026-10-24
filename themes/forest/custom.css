@@ -1,0 +1,27 @@
+/* WojteX Forest — przykład motywu CSS. Skopiuj do public/assets/custom.css. */
+:root[data-theme="dark"][data-accent] {
+  --bg: #0c1716;
+  --sidebar: #101e1c;
+  --panel: #162522;
+  --panel-raised: #1d302b;
+  --input: #10201b;
+  --accent: #86d9aa;
+  --accent-rgb: 134, 217, 170;
+  --accent-solid: #347850;
+  --accent-soft: #86d9aa15;
+}
+:root[data-theme="light"][data-accent] {
+  --bg: #f2f7f3;
+  --sidebar: #fcfefc;
+  --panel: #ffffff;
+  --panel-raised: #edf4ef;
+  --input: #f0f5f1;
+  --accent: #28714a;
+  --accent-rgb: 40, 113, 74;
+  --accent-solid: #28714a;
+  --accent-soft: #28714a12;
+}
+.brand-mark {
+  background: linear-gradient(145deg, #80c99e, #347850);
+  box-shadow: 0 6px 25px #34785025;
+}

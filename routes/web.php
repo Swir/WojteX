@@ -1,0 +1,74 @@
+<?php
+use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\{AuthController,ForumController,CommunityController,AdminController,AttachmentController,InstallController,MybbImportController,LanguageController,PasswordRecoveryController,GroupController,PrivateMessageController,PrivateMessageReportAdminController};
+
+Route::get('/install',[InstallController::class,'show']);
+Route::post('/install',[InstallController::class,'store'])->middleware('throttle:5,1');
+Route::get('/login',fn()=>redirect('/#/login'))->name('login');
+Route::middleware('installed')->group(function(){
+    Route::get('/',fn()=>view('forum'));
+    Route::get('/attachments/{id}',[AttachmentController::class,'download'])->whereNumber('id')->middleware('fresh_forum_reader');
+    Route::prefix('api')->group(function(){
+        Route::get('/bootstrap',[ForumController::class,'bootstrap'])->middleware('fresh_forum_reader');
+        Route::post('/locale',[LanguageController::class,'choose']);
+        Route::get('/threads',[ForumController::class,'threads'])->middleware('fresh_forum_reader');
+        Route::get('/threads/{id}',[ForumController::class,'show'])->whereNumber('id')->middleware('fresh_forum_reader');
+        Route::get('/shouts',[CommunityController::class,'shouts']);
+        Route::get('/rankings',[CommunityController::class,'rankings'])->middleware('fresh_forum_reader');
+        Route::post('/auth/register',[AuthController::class,'register'])->middleware('throttle:register');
+        Route::post('/auth/login',[AuthController::class,'login'])->middleware('throttle:login');
+        Route::post('/auth/password/forgot',[PasswordRecoveryController::class,'forgot'])->middleware('throttle:5,1');
+        Route::post('/auth/password/reset',[PasswordRecoveryController::class,'reset'])->middleware('throttle:5,1');
+        Route::middleware('auth')->group(function(){
+            Route::post('/auth/logout',[AuthController::class,'logout']);
+            Route::patch('/profile',[AuthController::class,'profile']);
+            Route::middleware(['throttle:posting', 'fresh_forum_reader'])->group(function(){
+                Route::post('/threads',[ForumController::class,'create']);
+                Route::post('/threads/{id}/posts',[ForumController::class,'reply'])->whereNumber('id');
+                Route::patch('/threads/{id}',[ForumController::class,'moderate'])->whereNumber('id');
+                Route::delete('/threads/{id}',[ForumController::class,'deleteThread'])->whereNumber('id');
+                Route::post('/threads/{id}/bookmark',[ForumController::class,'bookmark'])->whereNumber('id');
+                Route::patch('/posts/{id}',[ForumController::class,'editPost'])->whereNumber('id');
+                Route::delete('/posts/{id}',[ForumController::class,'deletePost'])->whereNumber('id');
+                Route::post('/posts/{id}/reaction',[ForumController::class,'reaction'])->whereNumber('id');
+                Route::post('/posts/{id}/attachments',[AttachmentController::class,'upload'])->whereNumber('id');
+            });
+            Route::middleware('active_pm')->group(function(){
+                Route::get('/messages/blocks',[PrivateMessageController::class,'blockedContacts']);
+                Route::post('/messages/blocks',[PrivateMessageController::class,'blockContact'])->middleware('throttle:10,1');
+                Route::delete('/messages/blocks/{id}',[PrivateMessageController::class,'unblockContact'])->whereNumber('id')->middleware('throttle:10,1');
+                Route::get('/messages/recipients',[PrivateMessageController::class,'recipients'])->middleware('throttle:30,1');
+                Route::get('/messages',[PrivateMessageController::class,'index']);
+                Route::post('/messages',[PrivateMessageController::class,'send'])->middleware('throttle:10,1');
+                Route::post('/messages/{id}/report',[PrivateMessageController::class,'report'])->whereNumber('id')->middleware('throttle:5,1');
+                Route::patch('/messages/{id}/read',[PrivateMessageController::class,'markRead'])->whereNumber('id');
+                Route::delete('/messages/{id}',[PrivateMessageController::class,'hide'])->whereNumber('id');
+            });
+            Route::post('/shouts',[CommunityController::class,'shout'])->middleware('throttle:shout');
+            Route::delete('/shouts/{id}',[CommunityController::class,'deleteShout'])->whereNumber('id');
+            Route::prefix('admin')->middleware('admin')->group(function(){
+                Route::get('/',[AdminController::class,'show']);
+                Route::get('/message-reports',[PrivateMessageReportAdminController::class,'index']);
+                Route::patch('/message-reports/{id}',[PrivateMessageReportAdminController::class,'review'])->whereNumber('id');
+                Route::get('/languages',[LanguageController::class,'index']);
+                Route::get('/groups',[GroupController::class,'index']);
+                Route::get('/groups/users',[GroupController::class,'searchUsers'])->middleware('throttle:30,1');
+                Route::post('/groups',[GroupController::class,'create'])->middleware('throttle:10,1');
+                Route::patch('/groups/{id}',[GroupController::class,'rename'])->whereNumber('id');
+                Route::delete('/groups/{id}',[GroupController::class,'delete'])->whereNumber('id');
+                Route::put('/groups/{id}/users/{userId}',[GroupController::class,'member'])->whereNumber(['id', 'userId']);
+                Route::put('/groups/{id}/categories/{categoryId}',[GroupController::class,'permission'])->whereNumber(['id', 'categoryId']);
+                Route::get('/languages/template',[LanguageController::class,'template']);
+                Route::post('/languages',[LanguageController::class,'store'])->middleware('throttle:10,1');
+                Route::patch('/settings',[AdminController::class,'settings']);
+                Route::patch('/plugins/{id}',[AdminController::class,'plugin']);
+                Route::get('/users/search',[AdminController::class,'searchUsers'])->middleware('throttle:30,1');
+                Route::patch('/users/{id}',[AdminController::class,'user'])->whereNumber('id');
+                Route::post('/categories',[AdminController::class,'createCategory']);
+                Route::patch('/categories/{id}',[AdminController::class,'category'])->whereNumber('id');
+                Route::post('/imports/mybb/preview',[MybbImportController::class,'preview'])->middleware('throttle:10,1');
+                Route::post('/imports/mybb',[MybbImportController::class,'store'])->middleware('throttle:5,1');
+            });
+        });
+    });
+});

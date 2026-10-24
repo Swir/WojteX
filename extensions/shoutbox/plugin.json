@@ -1,0 +1,7 @@
+{
+  "id": "shoutbox",
+  "name": "Shoutbox",
+  "description": "Rozmowy społeczności z historią i moderacją.",
+  "version": "0.1.0",
+  "api": 1
+}
