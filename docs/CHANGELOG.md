@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Save a draft of a new topic or a reply in the current browser. Restore text after reloading, discard it explicitly, or choose which version to save when another tab changes the draft. Attachments are selected again when reopening a draft.
+- Copy a direct link from any post. The link finds the post's current page and keeps the topic's normal access checks.
 - Added an index for the latest discussion feed and reused Markdown rendering setup within a topic page.
 - After posting a reply, open the page containing it directly. Posting refreshes category counters through a smaller response and leaves the shoutbox input intact.
 - The discussion list can load before sidebar statistics and activity. Automatic sidebar loads run when the sidebar is visible. Startup reuses the translations already in the page when the requested language matches.

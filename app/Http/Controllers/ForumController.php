@@ -110,16 +110,39 @@ class ForumController extends Controller
 
     public function show(Request $request,int $id)
     {
-        $request->validate(['page'=>'nullable|integer|min:1|max:100000']);
+        $data = $request->validate([
+            'page' => 'nullable|integer|min:1|max:100000',
+            'post' => 'nullable|integer|min:1',
+        ]);
         $thread=Forum::thread($id,$request->user());
+        $postId = isset($data['post']) ? (int) $data['post'] : null;
+        $page = isset($data['page']) ? (int) $data['page'] : null;
+        if ($postId !== null && $page === null) {
+            $page = $this->pageContainingPost($id, $postId);
+        }
+        $query = DB::table('posts')->where('thread_id', $id)->orderBy('id');
+        $posts = $query->paginate(self::POSTS_PER_PAGE, ['*'], 'page', $page);
+        if ($postId !== null && !$posts->getCollection()->contains('id', $postId)) {
+            // A link with an older page number can outlive deleted replies.
+            $posts = $query->paginate(self::POSTS_PER_PAGE, ['*'], 'page', $this->pageContainingPost($id, $postId));
+            abort_unless($posts->getCollection()->contains('id', $postId), 404, __('server.post_unavailable'));
+        }
         // Count one view per topic per session, bounded to the latest 100 topic ids.
         $seen=$request->session()->get('viewed_threads',[]);
         if (!in_array($id,$seen,true)) {
             DB::table('threads')->where('id',$id)->increment('views'); ++$thread->views;
             $seen[]=$id; $request->session()->put('viewed_threads',array_slice($seen,-100));
         }
-        $posts=DB::table('posts')->where('thread_id',$id)->orderBy('id')->paginate(self::POSTS_PER_PAGE);
         return response()->json(['thread'=>Forum::threadData($thread),'posts'=>Forum::postsData($posts->getCollection(),$request->user()),'page'=>$posts->currentPage(),'last_page'=>$posts->lastPage(),'total_posts'=>$posts->total(),'can_reply'=>Forum::canReplyCategory(DB::table('categories')->find($thread->category_id), $request->user())]);
+    }
+
+    private function pageContainingPost(int $threadId, int $postId): int
+    {
+        $position = DB::table('posts')->where('thread_id', $threadId)->where('id', '<=', $postId)
+            ->selectRaw('COUNT(*) AS post_position, MAX(id) AS last_id')->first();
+        abort_unless((int) $position->last_id === $postId, 404, __('server.post_unavailable'));
+
+        return intdiv((int) $position->post_position - 1, self::POSTS_PER_PAGE) + 1;
     }
 
     public function reply(Request $request,int $id)
@@ -140,8 +163,7 @@ class ForumController extends Controller
             abort_unless($inserted === 1,403,__('server.category_post_forbidden'));
             $postId=(int) DB::connection()->getPdo()->lastInsertId();
             DB::table('threads')->where('id',$id)->update(['updated_at'=>now()]);
-            $position = DB::table('posts')->where('thread_id', $id)->where('id', '<=', $postId)->count();
-            return [$postId, intdiv($position - 1, self::POSTS_PER_PAGE) + 1];
+            return [$postId, $this->pageContainingPost($id, $postId)];
         });
         Event::dispatch('veyra.post.created',[$postId,$request->user()->id]);
         return response()->json([

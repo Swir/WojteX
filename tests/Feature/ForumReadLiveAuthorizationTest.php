@@ -59,8 +59,10 @@ class ForumReadLiveAuthorizationTest extends TestCase
     public function test_demoted_stale_moderator_cannot_read_private_list_detail_bootstrap_or_attachment(): void
     {
         [$staff, $threadId, $attachmentId] = $this->fixture();
+        $postId = DB::table('posts')->where('thread_id', $threadId)->value('id');
         $this->actingAs($staff);
         $this->getJson('/api/threads/'.$threadId)->assertOk();
+        $this->getJson('/api/threads/'.$threadId.'?post='.$postId)->assertOk();
         $this->getJson('/api/threads/quick-search?q=Classified')->assertOk()
             ->assertJsonPath('data.0.title', 'Classified plans');
         $this->getJson('/api/forum-summary')->assertOk()
@@ -71,6 +73,7 @@ class ForumReadLiveAuthorizationTest extends TestCase
         DB::table('users')->where('id', $staff->id)->update(['role' => 'member']);
         $this->assertSame('moderator', $staff->role);
         $this->getJson('/api/threads/'.$threadId)->assertNotFound();
+        $this->getJson('/api/threads/'.$threadId.'?post='.$postId)->assertNotFound();
         $this->getJson('/api/threads?q=Classified')->assertOk()
             ->assertJsonCount(0, 'data')->assertDontSee('Classified plans');
         $this->getJson('/api/threads/quick-search?q=Classified')->assertOk()

@@ -186,7 +186,7 @@ class ForumSecurityTest extends TestCase
         $replyingUser = $this->user();
         $category = $this->category();
         [$thread] = $this->thread($author, $category);
-        [$anotherThread] = $this->thread($author, $category, 'Another discussion');
+        [$anotherThread, $otherPost] = $this->thread($author, $category, 'Another discussion');
         for ($position = 2; $position <= 39; $position++) {
             $this->makePost($author, $thread, 'On topic '.$position);
             $this->makePost($author, $anotherThread, 'In another topic '.$position);
@@ -196,9 +196,22 @@ class ForumSecurityTest extends TestCase
             ->assertCreated()->assertJsonPath('page', 1);
         $reply = $this->postJson('/api/threads/'.$thread.'/posts', ['body' => 'This is post forty-one.'])
             ->assertCreated()->assertJsonPath('page', 2);
+        $newPost = $reply->json('post.id');
 
         $this->getJson('/api/threads/'.$thread.'?page=2')->assertOk()->assertJsonCount(1, 'posts')
-            ->assertJsonPath('posts.0.id', $reply->json('post.id'));
+            ->assertJsonPath('posts.0.id', $newPost);
+        $this->getJson('/api/threads/'.$thread.'?post='.$newPost)->assertOk()
+            ->assertJsonPath('page', 2)->assertJsonPath('posts.0.id', $newPost);
+        $this->getJson('/api/threads/'.$thread.'?post='.$otherPost)->assertNotFound();
+
+        $earlier = DB::table('posts')->where('thread_id', $thread)->orderBy('id')->offset(1)->value('id');
+        DB::table('posts')->where('id', $earlier)->delete();
+        foreach (['', '&page=2'] as $oldPage) {
+            $this->getJson('/api/threads/'.$thread.'?post='.$newPost.$oldPage)->assertOk()
+                ->assertJsonPath('page', 1)->assertJsonPath('posts.39.id', $newPost);
+        }
+        DB::table('posts')->where('id', $newPost)->delete();
+        $this->getJson('/api/threads/'.$thread.'?post='.$newPost)->assertNotFound();
     }
 
     /** Native Laravel HTTP/PDO qualification, not counted green on incomplete PHP. */

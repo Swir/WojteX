@@ -17,6 +17,7 @@
   "server.bookmarks_login": "Zaloguj się, aby zobaczyć zapisane tematy.",
   "server.category_not_found": "Nie znaleziono działu.",
   "server.thread_unavailable": "Temat jest niedostępny.",
+  "server.post_unavailable": "Ten wpis jest niedostępny.",
   "server.thread_locked": "Ten temat jest zamknięty.",
   "server.delete_first_post": "Pierwszy wpis można usunąć tylko razem z tematem.",
   "server.self_reaction": "Nie możesz oceniać własnego wpisu.",

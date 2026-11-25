@@ -236,7 +236,7 @@ function updateNav(route) {
     });
     closeSidebar();
 }
-async function navigate(){if(!state.bootstrap)return;const token=++state.viewToken;const route=routeInfo();state.route=route;state.thread=null;state.page=Number(route.query.get('page'))||1;state.threadPage=Number(route.query.get('page'))||1;state.sort=route.query.get('sort')||'latest';updateNav(route);$('#main-content').classList.remove('wx-thread-page');$('#main-content').classList.toggle('wx-home',route.name==='home');const view=$('#view');view.setAttribute('aria-busy','true');view.innerHTML=loading();if(quickSearchDialog.open)quickSearchDialog.close();$('#workspace-grid').classList.toggle('chat-view',route.name==='chat');try{
+async function navigate(){if(!state.bootstrap)return;flushDrafts();const token=++state.viewToken;const route=routeInfo();state.route=route;state.thread=null;state.page=Number(route.query.get('page'))||1;state.threadPage=Number(route.query.get('page'))||1;state.sort=route.query.get('sort')||'latest';updateNav(route);$('#main-content').classList.remove('wx-thread-page');$('#main-content').classList.toggle('wx-home',route.name==='home');const view=$('#view');view.setAttribute('aria-busy','true');view.innerHTML=loading();if(quickSearchDialog.open)quickSearchDialog.close();$('#workspace-grid').classList.toggle('chat-view',route.name==='chat');try{
     if(['home','latest','category','search','saved'].includes(route.name)){await renderFeed(route,token);}
     else if(route.name==='categories'){renderDirectory();}
     else if(route.name==='thread'&&route.id){await renderThread(route.id,token);}
@@ -362,9 +362,14 @@ async function renderFeed(route, token) {
 }
 function pagination(current,last,total,label='topics'){if(last<=1)return '';return `<div class="pagination"><span>${tx('ui.pagination.summary',{current:count(current),last:count(last),total:counted(total,label)})}</span><div class="pagination-actions"><button class="button button-ghost" data-action="page" data-page="${current-1}" ${current<=1?'disabled':''} aria-label="${tx('ui.pagination.previous')}">${icon('arrow-left')}</button><button class="button button-ghost" data-action="page" data-page="${current+1}" ${current>=last?'disabled':''} aria-label="${tx('ui.pagination.next')}">${icon('arrow-right')}</button></div></div>`;}
 async function renderThread(id,token){
-    const r=await request(`/api/threads/${id}?page=${state.threadPage}`);
+    const query = new URLSearchParams();
+    const targetPost = state.route.query.get('post');
+    if (targetPost) query.set('post', targetPost);
+    if (!targetPost || state.route.query.has('page')) query.set('page', state.threadPage);
+    const r=await request(`/api/threads/${id}?${query}`);
     if(token!==state.viewToken)return;
     state.thread=r;
+    state.threadPage = r.page;
     const t=r.thread;
     const canReply=isMod()||(!t.is_locked&&(!state.user||r.can_reply!==false));
     setHeader(t.title,'',t.category?.name||tr('ui.topic.discussion'));
@@ -393,7 +398,10 @@ async function renderThread(id,token){
         <div class="posts-list">${(r.posts||[]).map((p,i)=>postCard(p,(r.page-1)*40+i+1)).join('')}</div>
         ${pagination(r.page||1,r.last_page||1,r.total_posts||r.posts?.length||0,'posts')}${replyForm(t)}`;
 
-    const target = document.getElementById('post-' + Number(state.route.query.get('post')));
+    const reply = $('#reply-panel form[data-form="reply"]');
+    if (reply) bindDraft(reply, id);
+
+    const target = document.getElementById('post-' + Number(targetPost));
     if (target) {
         target.tabIndex = -1;
         target.focus({preventScroll: true});
@@ -401,10 +409,10 @@ async function renderThread(id,token){
     }
 }
 
-function postCard(p,number){const canEdit=state.user&&(state.user.id===p.author?.id||isMod())&&(!state.thread?.thread?.is_locked||isMod())&&(state.thread?.can_reply!==false||isMod());return `<article class="panel post-card" id="post-${Number(p.id)}"><div class="post-top">${avatar(p.author)}<div class="post-author"><strong>${e(p.author?.name||tr('ui.user.fallback'))}</strong>${role(p.author)}<small><time title="${e(dateTitle(p.created_at))}">${e(relative(p.created_at))}</time>${e(p.updated_at&&p.updated_at!==p.created_at?tr('ui.common.edited_suffix'):'')}</small></div><span class="post-number">#${number}</span></div><div class="post-body">${p.body_html||e(p.body).replace(/\n/g,'<br>')}</div>${p.attachments?.length?`<div class="attachments">${p.attachments.map(a=>`<a class="attachment" href="/attachments/${Number(a.id)}" target="_blank" rel="noopener noreferrer">${icon('paperclip')}${e(a.name||a.original_name||tr('ui.post.attachment'))}${a.size?`<span class="muted">(${formatBytes(a.size)})</span>`:''}</a>`).join('')}</div>`:''}<div class="post-actions"><div class="post-actions-group"><button class="reaction-button ${p.reacted?'active':''}" data-action="react" data-id="${Number(p.id)}" aria-pressed="${!!p.reacted}" ${state.thread?.can_reply===false?'disabled':state.user?.id===p.author?.id?`disabled title="${tx('ui.post.own_reaction')}"`:''}>${icon('heart')}<span>${count(p.reactions_count)}</span></button>${state.thread?.can_reply===false?'':`<button class="subtle-button" data-action="quote" data-id="${Number(p.id)}">${tx('ui.post.quote')}</button>`}</div>${canEdit?`<div class="post-actions-group"><button class="subtle-button" data-action="edit-post" data-id="${Number(p.id)}">${tx('ui.common.edit')}</button><button class="subtle-button" data-action="attach-post" data-id="${Number(p.id)}">${tx('ui.post.add_file')}</button>${number!==1?`<button class="subtle-button" data-action="delete-post" data-id="${Number(p.id)}">${tx('ui.common.delete')}</button>`:''}</div>`:''}</div></article>`;}
+function postCard(p,number){const canEdit=state.user&&(state.user.id===p.author?.id||isMod())&&(!state.thread?.thread?.is_locked||isMod())&&(state.thread?.can_reply!==false||isMod());return `<article class="panel post-card" id="post-${Number(p.id)}"><div class="post-top">${avatar(p.author)}<div class="post-author"><strong>${e(p.author?.name||tr('ui.user.fallback'))}</strong>${role(p.author)}<small><time title="${e(dateTitle(p.created_at))}">${e(relative(p.created_at))}</time>${e(p.updated_at&&p.updated_at!==p.created_at?tr('ui.common.edited_suffix'):'')}</small></div><span class="post-number">#${number}</span></div><div class="post-body">${p.body_html||e(p.body).replace(/\n/g,'<br>')}</div>${p.attachments?.length?`<div class="attachments">${p.attachments.map(a=>`<a class="attachment" href="/attachments/${Number(a.id)}" target="_blank" rel="noopener noreferrer">${icon('paperclip')}${e(a.name||a.original_name||tr('ui.post.attachment'))}${a.size?`<span class="muted">(${formatBytes(a.size)})</span>`:''}</a>`).join('')}</div>`:''}<div class="post-actions"><div class="post-actions-group"><button type="button" class="subtle-button wx-copy-post" data-action="copy-post" data-id="${Number(p.id)}" aria-label="${tx('ui.post.copy_link_label',{number})}">${icon('link')}${tx('ui.post.copy_link')}</button><button class="reaction-button ${p.reacted?'active':''}" data-action="react" data-id="${Number(p.id)}" aria-pressed="${!!p.reacted}" ${state.thread?.can_reply===false?'disabled':state.user?.id===p.author?.id?`disabled title="${tx('ui.post.own_reaction')}"`:''}>${icon('heart')}<span>${count(p.reactions_count)}</span></button>${state.thread?.can_reply===false?'':`<button class="subtle-button" data-action="quote" data-id="${Number(p.id)}">${tx('ui.post.quote')}</button>`}</div>${canEdit?`<div class="post-actions-group"><button class="subtle-button" data-action="edit-post" data-id="${Number(p.id)}">${tx('ui.common.edit')}</button><button class="subtle-button" data-action="attach-post" data-id="${Number(p.id)}">${tx('ui.post.add_file')}</button>${number!==1?`<button class="subtle-button" data-action="delete-post" data-id="${Number(p.id)}">${tx('ui.common.delete')}</button>`:''}</div>`:''}</div></article>`;}
 function formatBytes(bytes){const unit=bytes>=1024*1024?'megabyte':'kilobyte';const value=bytes>=1024*1024?bytes/1024/1024:Math.ceil(bytes/1024);return new Intl.NumberFormat(activeLocale(),{style:'unit',unit,unitDisplay:'short',maximumFractionDigits:1}).format(value);}
 function editor(name='body',value='',placeholder=tr('ui.editor.placeholder'),syntax='markdown'){return `<div class="editor" data-syntax="${syntax==='bbcode'?'bbcode':'markdown'}"><div class="editor-toolbar"><button type="button" data-action="format" data-format="bold" aria-label="${tx('ui.editor.bold')}"><strong>B</strong></button><button type="button" data-action="format" data-format="italic" aria-label="${tx('ui.editor.italic')}"><em>I</em></button><button type="button" data-action="format" data-format="link" aria-label="${tx('ui.editor.link')}">${icon('link')}</button><button type="button" data-action="format" data-format="code" aria-label="${tx('ui.editor.code')}">${icon('code')}</button><button type="button" data-action="format" data-format="quote" aria-label="${tx('ui.editor.quote')}">${icon('quote')}</button><button type="button" data-action="format" data-format="list" aria-label="${tx('ui.editor.list')}">${icon('list')}</button><small>${syntax==='bbcode'?'BBCODE':'MARKDOWN'}</small></div><textarea name="${e(name)}" placeholder="${e(placeholder)}" required maxlength="50000" aria-label="${tx('ui.editor.body_label')}">${e(value)}</textarea></div>`;}
-function replyForm(t){if(state.thread?.can_reply===false&&state.user&&!isMod())return `<section class="panel reply-panel">${empty(tr('ui.groups.read_only'),tr('ui.groups.read_only_help'),'lock')}</section>`;if(t.is_locked&&!isMod())return `<section class="panel reply-panel">${empty(tr('ui.post.closed_title'),tr('ui.post.closed_help'),'lock')}</section>`;if(!state.user)return `<section class="panel reply-panel">${empty(tr('ui.post.perspective_title'),tr('ui.post.sign_in_help'),'message',`<button class="button button-primary" data-action="login">${tx('ui.post.sign_in_reply')}</button>`)}</section>`;return `<section class="panel reply-panel" id="reply-panel"><div class="reply-header">${avatar(state.user)}<div><h3>${tx('ui.post.reply_title')}</h3><small>${tx('ui.post.reply_subtitle')}</small></div></div><form data-form="reply" data-thread="${Number(t.id)}"><div class="form-error" role="alert"></div>${editor()}<div class="reply-bottom"><small>${tx('ui.post.markdown_help')}<br>${tx('ui.post.be_helpful')}</small><button class="button button-primary" type="submit">${tx('ui.post.publish_reply')}${icon('arrow-right')}</button></div></form></section>`;}
+function replyForm(t){if(state.thread?.can_reply===false&&state.user&&!isMod())return `<section class="panel reply-panel">${empty(tr('ui.groups.read_only'),tr('ui.groups.read_only_help'),'lock')}</section>`;if(t.is_locked&&!isMod())return `<section class="panel reply-panel">${empty(tr('ui.post.closed_title'),tr('ui.post.closed_help'),'lock')}</section>`;if(!state.user)return `<section class="panel reply-panel">${empty(tr('ui.post.perspective_title'),tr('ui.post.sign_in_help'),'message',`<button class="button button-primary" data-action="login">${tx('ui.post.sign_in_reply')}</button>`)}</section>`;return `<section class="panel reply-panel" id="reply-panel"><div class="reply-header">${avatar(state.user)}<div><h3>${tx('ui.post.reply_title')}</h3><small>${tx('ui.post.reply_subtitle')}</small></div></div><form data-form="reply" data-thread="${Number(t.id)}"><div class="form-error" role="alert"></div>${editor()}${draftControls()}<div class="reply-bottom"><small>${tx('ui.post.markdown_help')}<br>${tx('ui.post.be_helpful')}</small><button class="button button-primary" type="submit">${tx('ui.post.publish_reply')}${icon('arrow-right')}</button></div></form></section>`;}
 async function renderRankings(token){setHeader(tr('ui.rankings.header'),tr('ui.rankings.subtitle'),tr('ui.rankings.eyebrow'));if(!pluginEnabled('rankings')){$('#view').innerHTML=`<div class="panel">${empty(tr('ui.rankings.disabled'),tr('ui.rankings.disabled_help'),'trophy')}</div>`;return;}const r=await request('/api/rankings');if(token!==state.viewToken)return;state.rankings=r.data||[];renderSidebarRankings();$('#view').innerHTML=`<section class="panel ranking-hero"><div class="empty-icon">${icon('trophy')}</div><div><h2>${tx('ui.rankings.hero')}</h2><p>${tx('ui.rankings.explanation')}</p></div></section><section class="panel"><div class="panel-header"><h2>${tx('ui.rankings.overall')}</h2><span class="minor-label">${e(counted(state.rankings.length,'people').toUpperCase())}</span></div>${state.rankings.length?state.rankings.map((u,i)=>`<div class="full-rank-row"><span class="rank-position ${i<3?'first':''}">${String(i+1).padStart(2,'0')}</span>${avatar(u)}<div class="rank-user"><strong>${e(u.name)}${role(u)}</strong><small>${e(u.badge||tr('ui.rankings.member'))}</small></div><div class="rank-metric posts">${count(u.posts_count)}<small>${e(noun(u.posts_count,'posts'))}</small></div><div class="rank-metric score">${count(u.score)}<small>${e(noun(u.score,'points'))}</small></div></div>`).join(''):empty(tr('ui.rankings.first'),tr('ui.rankings.first_help'),'trophy')}</section>`;}
 /** Personal inbox: messages stay text, never innerHTML from user content. */
 async function renderPrivateMessages(token) {
@@ -499,6 +507,119 @@ function renderImportReport(){const el=$('#import-result');if(!el||!state.import
 
 const dialog=$('#app-dialog');
 const quickSearchDialog = $('#quick-search-dialog');
+const draftForms = new WeakMap();
+const pendingDraftForms = new Set();
+
+function draftControls() {
+    return `<div class="wx-draft-bar" data-draft-bar hidden>
+        <span data-draft-status role="status"></span>
+        <button type="button" class="text-button" data-action="overwrite-draft" hidden>${tx('ui.drafts.overwrite')}</button>
+        <button type="button" class="text-button" data-action="discard-draft" hidden>${tx('ui.drafts.discard')}</button>
+    </div>`;
+}
+
+function draftSnapshot(form) {
+    const {body, title, category_id: category} = form.elements;
+    if (!body.value.trim() && !title?.value.trim()) return null;
+    return title ? {body: body.value, title: title.value, categoryId: category.value ? Number(category.value) : null} : {body: body.value};
+}
+
+function showDraftStatus(form, status) {
+    const bar = $('[data-draft-bar]', form);
+    const hasText = Boolean(draftSnapshot(form));
+    if (hasText && form.elements.category_id?.value === '' && ['saved', 'restored'].includes(status)) {
+        status = 'category';
+    }
+    const message = {
+        saved: tr('ui.drafts.saved'),
+        restored: tr('ui.drafts.restored'),
+        unavailable: tr('ui.drafts.unavailable'),
+        conflict: tr('ui.drafts.conflict'),
+        discarded: tr('ui.drafts.discarded'),
+        category: tr('ui.drafts.category_unavailable')
+    }[status] || '';
+    bar.hidden = !message && !hasText;
+    const label = $('[data-draft-status]', bar);
+    if (label.textContent !== message) label.textContent = message;
+    $('[data-action="discard-draft"]', bar).hidden = !hasText;
+    $('[data-action="overwrite-draft"]', bar).hidden = status !== 'conflict' || !hasText;
+}
+
+function bindDraft(form, threadId = null) {
+    const key = window.WojtexDrafts?.keyFor(state.user, threadId);
+    if (!key) return;
+    const {raw, draft} = WojtexDrafts.read(key);
+    draftForms.set(form, {key, raw, timer: null});
+    if (!draft) return;
+
+    form.elements.body.value = draft.body;
+    if (form.elements.title) {
+        form.elements.title.value = draft.title;
+        const category = form.elements.category_id;
+        if (Array.from(category.options).some(option => Number(option.value) === draft.categoryId)) {
+            category.value = String(draft.categoryId);
+        } else {
+            const choice = new Option(tr('ui.drafts.choose_category'), '', true, true);
+            choice.disabled = true;
+            category.prepend(choice);
+            category.value = '';
+        }
+    }
+    if (draftSnapshot(form)) showDraftStatus(form, 'restored');
+}
+
+function saveDraft(form, overwrite = false) {
+    const entry = draftForms.get(form);
+    if (!entry || (!overwrite && !pendingDraftForms.has(form))) return;
+    clearTimeout(entry.timer);
+    pendingDraftForms.delete(form);
+    const snapshot = draftSnapshot(form);
+    const result = WojtexDrafts.write(entry.key, snapshot, entry.raw, overwrite);
+    if (result.status === 'saved') entry.raw = result.raw;
+    showDraftStatus(form, result.status === 'saved' && !snapshot ? '' : result.status);
+}
+
+function queueDraft(event) {
+    if (!event.target.matches('textarea[name="body"], input[name="title"], select[name="category_id"]')) return;
+    const form = event.target.form;
+    const entry = draftForms.get(form);
+    if (!entry) return;
+    clearTimeout(entry.timer);
+    pendingDraftForms.add(form);
+    entry.timer = setTimeout(() => saveDraft(form), 200);
+}
+
+function flushDrafts() {
+    pendingDraftForms.forEach(form => saveDraft(form));
+}
+
+function discardDraft(form) {
+    const entry = draftForms.get(form);
+    if (!entry || !window.confirm(tr('ui.drafts.discard_confirm'))) return;
+    clearTimeout(entry.timer);
+    pendingDraftForms.delete(form);
+    const result = WojtexDrafts.write(entry.key, null, entry.raw);
+    if (result.status !== 'saved') {
+        showDraftStatus(form, result.status);
+        return;
+    }
+    entry.raw = null;
+    form.elements.body.value = '';
+    if (form.elements.title) form.elements.title.value = '';
+    if (form.elements.attachment) form.elements.attachment.value = '';
+    showDraftStatus(form, 'discarded');
+    form.elements.body.focus();
+}
+
+function clearPublishedDraft(form, submitted) {
+    saveDraft(form);
+    const entry = draftForms.get(form);
+    if (!entry || JSON.stringify(draftSnapshot(form)) !== JSON.stringify(submitted)) return;
+    // Preserve an edit made during publishing or in another tab.
+    WojtexDrafts.write(entry.key, null, entry.raw);
+    draftForms.delete(form);
+}
+
 let quickSearchTimer;
 let quickSearchRequest;
 
@@ -641,8 +762,23 @@ quickSearchDialog.addEventListener('keydown', event => {
     options[next].focus();
 });
 
-function modal(title,subtitle,content,wide=false,ico=null){dialog.classList.toggle('wide',wide);dialog.classList.toggle('wx-composer',/data-form="(?:new-topic|edit-post)"/.test(content));$('#dialog-content').innerHTML=`<div class="dialog-header"><div>${ico?`<div class="dialog-icon">${icon(ico)}</div>`:''}<h2 id="dialog-title">${e(title)}</h2>${subtitle?`<p>${e(subtitle)}</p>`:''}</div><button class="icon-button dialog-close" data-action="close-dialog" aria-label="${tx('ui.common.close')}">${icon('close')}</button></div><div class="dialog-content">${content}</div>`;if(!dialog.open)dialog.showModal();setTimeout(()=>{const focus=$('input:not([type=hidden]),textarea,select',dialog);if(focus)focus.focus();},50);}
+function modal(title,subtitle,content,wide=false,ico=null){flushDrafts();dialog.classList.toggle('wide',wide);dialog.classList.toggle('wx-composer',/data-form="(?:new-topic|edit-post)"/.test(content));$('#dialog-content').innerHTML=`<div class="dialog-header"><div>${ico?`<div class="dialog-icon">${icon(ico)}</div>`:''}<h2 id="dialog-title">${e(title)}</h2>${subtitle?`<p>${e(subtitle)}</p>`:''}</div><button class="icon-button dialog-close" data-action="close-dialog" aria-label="${tx('ui.common.close')}">${icon('close')}</button></div><div class="dialog-content">${content}</div>`;if(!dialog.open)dialog.showModal();setTimeout(()=>{const focus=$('input:not([type=hidden]),textarea,select',dialog);if(focus)focus.focus();},50);}
 function closeDialog(){if(dialog.open)dialog.close();}
+
+async function copyForumLink(path, title, addressLabel, copiedMessage) {
+    const url = location.origin + location.pathname + path;
+    try {
+        if (window.isSecureContext && navigator.clipboard?.writeText) {
+            await navigator.clipboard.writeText(url);
+            toast(copiedMessage);
+            return;
+        }
+    } catch (_) {
+        // A browser can expose the clipboard API while denying access to it.
+    }
+    modal(title, tr('ui.topic.link_subtitle'), `<label class="field"><span>${e(addressLabel)}</span><input readonly value="${e(url)}"></label>`);
+    $('input', dialog).select();
+}
 function ensureAuth(){if(state.user)return true;authModal('login');return false;}
 function authModal(kind='login'){const register=kind==='register';if(register&&state.bootstrap?.settings?.registration_open===false){modal(tr('ui.auth.registration_closed'),tr('ui.auth.registration_closed_help'),`<button class="button button-primary button-wide" data-action="login">${tx('ui.auth.has_account_button')}</button>`,false,'lock');return;}modal(register?tr('ui.auth.register_title'):tr('ui.auth.login_title'),register?tr('ui.auth.register_subtitle'):tr('ui.auth.login_subtitle'),`<form data-form="${register?'register':'login'}"><div class="form-error" role="alert"></div>${register?`<label class="field"><span>${tx('ui.auth.display_name')}</span><input name="name" type="text" minlength="2" maxlength="50" required autocomplete="nickname" placeholder="${tx('ui.auth.name_placeholder')}"></label>`:''}<label class="field"><span>${tx('ui.auth.email')}</span><input type="email" name="email" required autocomplete="email" placeholder="${tx('ui.auth.email_placeholder')}" maxlength="254"></label><label class="field"><span>${tx('ui.auth.password')}</span><input type="password" name="password" required ${register?'minlength="12"':''} maxlength="128" autocomplete="${register?'new-password':'current-password'}" placeholder="${e(register?tr('ui.auth.password_min'):tr('ui.auth.your_password'))}"></label>${register?`<label class="field"><span>${tx('ui.auth.repeat_password')}</span><input type="password" name="password_confirmation" required minlength="12" maxlength="128" autocomplete="new-password" placeholder="${tx('ui.auth.repeat_placeholder')}"></label>`:''}<button class="button button-primary button-wide" type="submit">${e(register?tr('ui.auth.create_account'):tr('ui.auth.sign_in'))}${icon('arrow-right')}</button><p class="form-note" style="margin-top:13px">${register?tx('ui.auth.separate_password'):`<button type="button" class="text-button" data-action="forgot-password">${tx('ui.auth.forgot_link')}</button>`}</p></form><div class="auth-switch">${e(register?tr('ui.auth.has_account'):tr('ui.auth.first_time'))}<button data-action="${register?'login':'register'}">${e(register?tr('ui.auth.sign_in'):tr('ui.auth.join'))}</button></div>`,false,register?'users':'spark');}
 function forgotPasswordModal(){
@@ -659,7 +795,7 @@ function resetPasswordModal(route){
     modal(tr('ui.auth.reset_title'),tr('ui.auth.reset_subtitle'),`<form data-form="reset-password"><div class="form-error" role="alert"></div><input type="hidden" name="token" value="${e(token)}"><label class="field"><span>${tx('ui.auth.email')}</span><input type="email" name="email" required autocomplete="email" maxlength="254" value="${e(email)}"></label><label class="field"><span>${tx('ui.auth.password')}</span><input type="password" name="password" required minlength="12" maxlength="128" autocomplete="new-password" placeholder="${tx('ui.auth.password_min')}"></label><label class="field"><span>${tx('ui.auth.repeat_password')}</span><input type="password" name="password_confirmation" required minlength="12" maxlength="128" autocomplete="new-password"></label><button type="submit" class="button button-primary button-wide">${tx('ui.auth.reset_submit')}${icon('arrow-right')}</button></form><div class="auth-switch"><button data-action="login">${tx('ui.auth.back_to_login')}</button></div>`,false,'lock');
 }
 function accountModal(){if(!state.user)return authModal();modal(state.user.name,tr('ui.auth.account_subtitle'),`<a class="button button-secondary button-wide" data-action="close-on-nav" href="#/profile">${icon('user')}${tx('ui.profile.edit')}</a>${state.user.role==='admin'?`<a class="button button-secondary button-wide" data-action="close-on-nav" href="#/admin" style="margin-top:10px">${icon('settings')}${tx('ui.nav.admin')}</a>`:''}<button class="button button-ghost button-wide" data-action="logout" style="margin-top:10px">${icon('logout')}${tx('ui.auth.sign_out')}</button>`,false,'user');}
-function newTopicModal(){if(!ensureAuth())return;const categories=(state.bootstrap.categories||[]).filter(c=>c.can_create!==false);if(!categories.length){toast(tr('ui.compose.no_category'),true);return;}const selected=state.route?.name==='category'?state.route.id:state.thread?.thread?.category_id;modal(tr('ui.topic.new'),tr('ui.compose.subtitle'),`<form data-form="new-topic"><div class="form-error" role="alert"></div><label class="field"><span>${tx('ui.compose.topic_title')}</span><input name="title" placeholder="${tx('ui.compose.topic_placeholder')}" required minlength="5" maxlength="180"></label><label class="field"><span>${tx('ui.compose.space')}</span><select name="category_id" required>${categories.map(c=>`<option value="${Number(c.id)}" ${selected===c.id?'selected':''}>${e(c.name)}${e(c.is_private?tr('ui.common.private_suffix'):'')}</option>`).join('')}</select></label><div class="field"><span>${tx('ui.compose.message')}</span>${editor('body','',tr('ui.compose.body_placeholder'))}</div><p class="composer-note">${tx('ui.post.markdown_help')}</p><details class="composer-attachment"><summary>${icon('paperclip')}${tx('ui.post.attachment')} · ${tx('ui.common.optional')}</summary><label class="field"><span>${tx('ui.post.attachment')}</span><input type="file" name="attachment" accept=".png,.jpg,.jpeg,.gif,.webp,.pdf,.txt,.zip"><small>${tx('ui.compose.file_help')}</small></label></details><div class="form-footer"><button type="button" class="button button-ghost" data-action="close-dialog">${tx('ui.common.cancel')}</button><button type="submit" class="button button-primary">${tx('ui.compose.publish')}${icon('arrow-right')}</button></div></form>`,true);}
+function newTopicModal(){if(!ensureAuth())return;const categories=(state.bootstrap.categories||[]).filter(c=>c.can_create!==false);if(!categories.length){toast(tr('ui.compose.no_category'),true);return;}const selected=state.route?.name==='category'?state.route.id:state.thread?.thread?.category_id;modal(tr('ui.topic.new'),tr('ui.compose.subtitle'),`<form data-form="new-topic"><div class="form-error" role="alert"></div><label class="field"><span>${tx('ui.compose.topic_title')}</span><input name="title" placeholder="${tx('ui.compose.topic_placeholder')}" required minlength="5" maxlength="180"></label><label class="field"><span>${tx('ui.compose.space')}</span><select name="category_id" required>${categories.map(c=>`<option value="${Number(c.id)}" ${selected===c.id?'selected':''}>${e(c.name)}${e(c.is_private?tr('ui.common.private_suffix'):'')}</option>`).join('')}</select></label><div class="field"><span>${tx('ui.compose.message')}</span>${editor('body','',tr('ui.compose.body_placeholder'))}</div>${draftControls()}<p class="composer-note">${tx('ui.post.markdown_help')}</p><details class="composer-attachment"><summary>${icon('paperclip')}${tx('ui.post.attachment')} · ${tx('ui.common.optional')}</summary><label class="field"><span>${tx('ui.post.attachment')}</span><input type="file" name="attachment" accept=".png,.jpg,.jpeg,.gif,.webp,.pdf,.txt,.zip"><small>${tx('ui.compose.file_help')}</small><small>${tx('ui.drafts.file_help')}</small></label></details><div class="form-footer"><button type="button" class="button button-ghost" data-action="close-dialog">${tx('ui.common.cancel')}</button><button type="submit" class="button button-primary">${tx('ui.compose.publish')}${icon('arrow-right')}</button></div></form>`,true);bindDraft($('[data-form="new-topic"]',dialog));}
 function editPostModal(id){const p=state.thread?.posts?.find(p=>p.id===id);if(!p)return;modal(tr('ui.compose.edit_title'),tr('ui.compose.edit_subtitle'),`<form data-form="edit-post" data-id="${id}"><div class="form-error" role="alert"></div>${editor('body',p.body,tr('ui.compose.edit_placeholder'),p.body_format||'markdown')}<div class="form-footer"><button class="button button-ghost" type="button" data-action="close-dialog">${tx('ui.common.cancel')}</button><button class="button button-primary" type="submit">${tx('ui.common.save_changes')}</button></div></form>`,true);}
 function attachmentModal(id){modal(tr('ui.attachment.title'),tr('ui.attachment.subtitle'),`<form data-form="attachment" data-id="${id}"><div class="form-error" role="alert"></div><label class="field"><span>${tx('ui.common.choose_file')}</span><input type="file" name="file" required accept=".png,.jpg,.jpeg,.gif,.webp,.pdf,.txt,.zip"><small>${tx('ui.attachment.limits')}</small></label><div class="form-footer"><button type="submit" class="button button-primary">${icon('upload')}${tx('ui.common.upload_file')}</button></div></form>`,false,'paperclip');}
 function categoryModal(id=null){const c=(state.admin?.categories||state.bootstrap.categories||[]).find(c=>c.id===id)||{name:'',description:'',color:'violet',icon:'code',is_private:false,parent_id:null};const optionIcons={code:tr('ui.category.icon_code'),game:tr('ui.category.icon_games'),star:tr('ui.category.icon_ideas'),rocket:tr('ui.category.icon_projects'),chat:tr('ui.category.icon_chat'),folder:tr('ui.category.icon_folder'),shield:tr('ui.category.icon_admin'),book:tr('ui.category.icon_guides'),help:tr('ui.category.icon_help'),terminal:tr('ui.category.icon_terminal')};modal(id?tr('ui.category.edit_title'):tr('ui.category.new_title'),tr('ui.category.subtitle'),`<form data-form="category" ${id?`data-id="${id}"`:''}><div class="form-error" role="alert"></div><label class="field"><span>${tx('ui.category.name')}</span><input name="name" required minlength="2" maxlength="120" value="${e(c.name)}"></label><label class="field"><span>${tx('ui.category.description')}</span><textarea name="description" maxlength="500">${e(c.description)}</textarea></label><div class="form-row"><label class="field"><span>${tx('ui.category.color')}</span><select name="color">${['violet','cyan','blue','green','amber','rose'].map(k=>`<option value="${k}" ${c.color===k?'selected':''}>${e(({violet:tr('ui.category.violet'),cyan:tr('ui.category.cyan'),blue:tr('ui.category.blue'),green:tr('ui.category.green'),amber:tr('ui.category.amber'),rose:tr('ui.category.rose'),slate:tr('ui.category.slate')})[k])}</option>`).join('')}</select></label><label class="field"><span>${tx('ui.category.icon')}</span><select name="icon">${Object.entries(optionIcons).map(([k,v])=>`<option value="${k}" ${c.icon===k?'selected':''}>${e(v)}</option>`).join('')}</select></label></div><label class="checkbox-field"><input name="is_private" type="checkbox" ${c.is_private?'checked':''}><span>${tx('ui.category.private')}</span></label><div class="form-footer"><button class="button button-primary" type="submit">${icon('check')}${e(id?tr('ui.common.save_changes'):tr('ui.category.create'))}</button></div></form>`,false,'layers');}
@@ -708,7 +844,7 @@ function reportMessageModal(id){
         <label class="field"><span>${tx('ui.reports.details')}</span><textarea name="details" maxlength="500" placeholder="${tx('ui.reports.details_hint')}"></textarea></label>
         <div class="form-footer"><button type="button" class="button button-ghost" data-action="close-dialog">${tx('ui.common.cancel')}</button><button type="submit" class="button button-primary">${tx('ui.reports.send')}</button></div></form>`,false,'alert');
 }
-function formatEditor(button){const area=$('textarea',button.closest('.editor'));if(!area)return;const {selectionStart:start,selectionEnd:end}=area;const selected=area.value.slice(start,end);let prefix='',suffix='',placeholder=tr('ui.editor.text');switch(button.dataset.format){case'bold':prefix='**';suffix='**';placeholder=tr('ui.editor.bold_text');break;case'italic':prefix='*';suffix='*';placeholder=tr('ui.editor.text');break;case'link':prefix='[';suffix='](https://example.com)';placeholder=tr('ui.editor.link_text');break;case'code':prefix='\n```\n';suffix='\n```\n';placeholder=tr('ui.editor.code_text');break;case'quote':prefix='\n> ';placeholder=tr('ui.editor.quote_text');break;case'list':prefix='\n- ';placeholder=tr('ui.editor.list_text');break;}if(button.closest('.editor').dataset.syntax==='bbcode'){const tags={bold:['[b]','[/b]'],italic:['[i]','[/i]'],link:['[url=https://example.com]','[/url]'],code:['\n[code]\n','\n[/code]\n'],quote:['\n[quote]','[/quote]\n'],list:['\n[list]\n[*]','\n[/list]\n']};[prefix,suffix]=tags[button.dataset.format]||['',''];}const replacement=prefix+(selected||placeholder)+suffix;area.setRangeText(replacement,start,end,'end');area.focus();if(!selected)area.setSelectionRange(start+prefix.length,start+prefix.length+placeholder.length);}
+function formatEditor(button){const area=$('textarea',button.closest('.editor'));if(!area)return;const {selectionStart:start,selectionEnd:end}=area;const selected=area.value.slice(start,end);let prefix='',suffix='',placeholder=tr('ui.editor.text');switch(button.dataset.format){case'bold':prefix='**';suffix='**';placeholder=tr('ui.editor.bold_text');break;case'italic':prefix='*';suffix='*';placeholder=tr('ui.editor.text');break;case'link':prefix='[';suffix='](https://example.com)';placeholder=tr('ui.editor.link_text');break;case'code':prefix='\n```\n';suffix='\n```\n';placeholder=tr('ui.editor.code_text');break;case'quote':prefix='\n> ';placeholder=tr('ui.editor.quote_text');break;case'list':prefix='\n- ';placeholder=tr('ui.editor.list_text');break;}if(button.closest('.editor').dataset.syntax==='bbcode'){const tags={bold:['[b]','[/b]'],italic:['[i]','[/i]'],link:['[url=https://example.com]','[/url]'],code:['\n[code]\n','\n[/code]\n'],quote:['\n[quote]','[/quote]\n'],list:['\n[list]\n[*]','\n[/list]\n']};[prefix,suffix]=tags[button.dataset.format]||['',''];}const replacement=prefix+(selected||placeholder)+suffix;area.setRangeText(replacement,start,end,'end');area.focus();if(!selected)area.setSelectionRange(start+prefix.length,start+prefix.length+placeholder.length);area.dispatchEvent(new Event('input',{bubbles:true}));}
 async function reloadData(){await loadBootstrap();await Promise.allSettled([navigate(),refreshShouts(true),refreshRankings()]);}
 async function refreshGroups(){state.groupData=await request('/api/admin/groups');}
 async function refreshLanguages(){state.languageData=await request('/api/admin/languages');}
@@ -725,6 +861,8 @@ case 'account':accountModal();break;
 case 'close-dialog':case 'close-on-nav':closeDialog();break;
 case 'logout':await request('/api/auth/logout',{method:'POST'});closeDialog();state.shouts=[];state.lastShoutId=0;await reloadData();toast(tr('ui.auth.signed_out'));break;
 case 'new-topic':newTopicModal();break;
+case 'discard-draft':discardDraft(button.closest('form'));break;
+case 'overwrite-draft':saveDraft(button.closest('form'), true);break;
 case 'quick-search':openQuickSearch();break;
 case 'sort':updateRouteQuery({sort:button.dataset.sort,page:null});break;
 case 'page':updateRouteQuery({page:button.dataset.page,post:null});window.scrollTo({top:0,behavior:'smooth'});break;
@@ -765,9 +903,14 @@ case 'retry-view':await navigate();break;
 case 'retry-bootstrap':await init();break;
 case 'refresh-shouts':await refreshShouts(true);break;
 case 'bookmark':if(ensureAuth()){const r=await request(`/api/threads/${id}/bookmark`,{method:'POST'});button.classList.toggle('button-primary',r.bookmarked);button.classList.toggle('button-secondary',!r.bookmarked);button.innerHTML=icon('bookmark')+e(r.bookmarked?tr('ui.topic.saved'):tr('ui.topic.save'));if(state.thread)state.thread.thread.bookmarked=r.bookmarked;toast(r.bookmarked?tr('ui.topic.saved_to_collection'):tr('ui.topic.removed_from_saved'));}break;
-case 'copy-thread':{const url=location.origin+location.pathname+'#/thread/'+state.thread.thread.id;if(navigator.clipboard&&window.isSecureContext){await navigator.clipboard.writeText(url);toast(tr('ui.topic.link_copied'));}else{modal(tr('ui.topic.link_title'),tr('ui.topic.link_subtitle'),`<label class="field"><span>${tx('ui.topic.address')}</span><input readonly value="${e(url)}" aria-label="${tx('ui.topic.link_title')}"></label>`);$('input',dialog).select();}}break;
+case 'copy-thread':
+    await copyForumLink(`#/thread/${state.thread.thread.id}`, tr('ui.topic.link_title'), tr('ui.topic.address'), tr('ui.topic.link_copied'));
+    break;
+case 'copy-post':
+    await copyForumLink(`#/thread/${state.thread.thread.id}?post=${id}`, tr('ui.post.link_title'), tr('ui.post.link_address'), tr('ui.post.link_copied'));
+    break;
 case 'react':if(ensureAuth()){const r=await request(`/api/posts/${id}/reaction`,{method:'POST'});button.classList.toggle('active',r.reacted);button.setAttribute('aria-pressed',String(r.reacted));button.innerHTML=icon('heart')+`<span>${count(r.reactions_count)}</span>`;await refreshRankings();}break;
-case 'quote':{if(!ensureAuth())break;const p=state.thread?.posts?.find(p=>p.id===id);const area=$('#reply-panel textarea');if(!area){toast(tr('ui.topic.closed_error'),true);break;}if(p){const quote=`> **${p.author?.name||tr('ui.user.fallback')}:**\n${p.body.split('\n').map(l=>'> '+l).join('\n')}\n\n`;area.value+=quote;area.focus();$('#reply-panel').scrollIntoView({behavior:'smooth',block:'center'});}}break;
+case 'quote':{if(!ensureAuth())break;const p=state.thread?.posts?.find(p=>p.id===id);const area=$('#reply-panel textarea');if(!area){toast(tr('ui.topic.closed_error'),true);break;}if(p){const quote=`> **${p.author?.name||tr('ui.user.fallback')}:**\n${p.body.split('\n').map(l=>'> '+l).join('\n')}\n\n`;area.value+=quote;area.dispatchEvent(new Event('input',{bubbles:true}));area.focus();$('#reply-panel').scrollIntoView({behavior:'smooth',block:'center'});}}break;
 case 'focus-reply':if(ensureAuth()){const field=$('#reply-panel textarea');if(field){field.focus({preventScroll:true});field.scrollIntoView({behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth',block:'center'});}}break;
 case 'edit-post':editPostModal(id);break;
 case 'attach-post':attachmentModal(id);break;
@@ -791,7 +934,7 @@ case 'edit-category':categoryModal(id);break;
 case 'category-visibility':{const c=(state.admin.categories||state.bootstrap.categories).find(c=>c.id===id);const makePublic=!!c.is_private;confirmModal(makePublic?tr('ui.admin.public_title'):tr('ui.admin.private_title'),makePublic?tr('ui.admin.public_body',{name:c.name}):tr('ui.admin.private_body',{name:c.name}),makePublic?tr('ui.admin.make_public'):tr('ui.admin.make_private'),async()=>{await request(`/api/admin/categories/${id}`,{method:'PATCH',body:{is_private:!c.is_private}});closeDialog();await loadBootstrap();await refreshAdmin();toast(tr('ui.admin.visibility_saved'));},false);}break;
 }}
 
-document.addEventListener('click',async event=>{const button=event.target.closest('[data-action]');if(!button||button.disabled)return;if(button.tagName!=='A')event.preventDefault();if(button.dataset.busy==='1')return;const immediate=['toggle-menu','appearance','reset-appearance','login','register','account','close-dialog','close-on-nav','new-topic','quick-search','sort','page','quote','edit-post','attach-post','delete-post','delete-thread','delete-shout','format','admin-tab','ban-user','group-delete','new-category','edit-category','category-visibility'];const busy=!immediate.includes(button.dataset.action);try{if(busy){button.dataset.busy='1';button.setAttribute('aria-busy','true');button.disabled=true;}await handleAction(button);}catch(err){toast(err.message,true);if(err.status===401){state.user=null;authModal('login');}}finally{if(busy){button.dataset.busy='0';button.removeAttribute('aria-busy');button.disabled=false;}}});
+document.addEventListener('click',async event=>{const button=event.target.closest('[data-action]');if(!button||button.disabled)return;if(button.tagName!=='A')event.preventDefault();if(button.dataset.busy==='1')return;const immediate=['toggle-menu','appearance','reset-appearance','login','register','account','close-dialog','close-on-nav','new-topic','discard-draft','overwrite-draft','quick-search','sort','page','quote','edit-post','attach-post','delete-post','delete-thread','delete-shout','format','admin-tab','ban-user','group-delete','new-category','edit-category','category-visibility'];const busy=!immediate.includes(button.dataset.action);try{if(busy){button.dataset.busy='1';button.setAttribute('aria-busy','true');button.disabled=true;}await handleAction(button);}catch(err){toast(err.message,true);if(err.status===401){state.user=null;authModal('login');}}finally{if(busy){button.dataset.busy='0';button.removeAttribute('aria-busy');button.disabled=false;}}});
 
 async function submitForm(form){const type=form.dataset.form;const values=Object.fromEntries(new FormData(form).entries());switch(type){
 case 'login':case 'register':{await request('/api/auth/'+type,{method:'POST',body:values});closeDialog();state.shouts=[];state.lastShoutId=0;await reloadData();toast(type==='register'?tr('ui.auth.registered'):tr('ui.auth.welcome_back'));}break;
@@ -800,10 +943,13 @@ case 'reset-password':{const r=await request('/api/auth/password/reset',{method:
 case 'private-message-report':await request(`/api/messages/${Number(form.dataset.id)}/report`,{method:'POST',body:{reason:values.reason,details:values.details||null}});closeDialog();toast(tr('ui.reports.sent'));break;
 case 'private-message':{const result=await request('/api/messages',{method:'POST',body:{recipient_id:Number(values.recipient_id),body:values.body}});form.reset();await navigate();toast(result.message||tr('ui.messages.sent_notice'));}break;
 case 'shout':{if(!values.body?.trim())return;const r=await request('/api/shouts',{method:'POST',body:{body:values.body.trim()}});$('input[name=body]',form).value='';if(r.shout&&!state.shouts.some(s=>s.id===r.shout.id)){state.shouts.push(r.shout);state.lastShoutId=Math.max(state.lastShoutId,Number(r.shout.id));state.shouts=state.shouts.slice(-100);paintShouts();}else await refreshShouts();$$('[data-shout-list]').forEach(el=>el.scrollTop=el.scrollHeight);}break;
-case 'new-topic':{const file=$('input[name=attachment]',form)?.files[0];const r=await request('/api/threads',{method:'POST',body:{title:values.title,category_id:Number(values.category_id),body:values.body}});closeDialog();const threadId=r.thread.id;location.hash='/thread/'+threadId;window.scrollTo({top:0,behavior:'instant'});toast(tr('ui.topic.published'));if(file){try{const detail=await request(`/api/threads/${threadId}`);const first=detail.posts?.[0];if(!first)throw new Error(tr('ui.topic.first_post_missing'));const fd=new FormData();fd.append('file',file);await request(`/api/posts/${first.id}/attachments`,{method:'POST',body:fd});if(state.route?.name==='thread'&&state.route.id===threadId)await navigate();toast(tr('ui.attachment.added'));}catch(err){toast(tr('ui.topic.attachment_failed',{message:err.message}),true);}}await updateStats();}break;
+case 'new-topic':{const submitted=draftSnapshot(form);saveDraft(form);const file=$('input[name=attachment]',form)?.files[0];const r=await request('/api/threads',{method:'POST',body:{title:values.title,category_id:Number(values.category_id),body:values.body}});clearPublishedDraft(form,submitted);closeDialog();const threadId=r.thread.id;location.hash='/thread/'+threadId;window.scrollTo({top:0,behavior:'instant'});toast(tr('ui.topic.published'));if(file){try{const detail=await request(`/api/threads/${threadId}`);const first=detail.posts?.[0];if(!first)throw new Error(tr('ui.topic.first_post_missing'));const fd=new FormData();fd.append('file',file);await request(`/api/posts/${first.id}/attachments`,{method:'POST',body:fd});if(state.route?.name==='thread'&&state.route.id===threadId)await navigate();toast(tr('ui.attachment.added'));}catch(err){toast(tr('ui.topic.attachment_failed',{message:err.message}),true);}}await updateStats();}break;
 case 'reply': {
     const id = Number(form.dataset.thread);
+    const submitted = draftSnapshot(form);
+    saveDraft(form);
     const result = await request(`/api/threads/${id}/posts`, {method: 'POST', body: {body: values.body}});
+    clearPublishedDraft(form, submitted);
     const route = routeInfo();
     if (route.name === 'thread' && route.id === id) {
         updateRouteQuery({page: result.page ?? state.threadPage, post: result.post.id});
@@ -851,6 +997,10 @@ document.addEventListener('submit',async event=>{const form=event.target;if(!for
 document.addEventListener('input',event=>{if(event.target.matches('[data-form="private-message"] [name="recipient_query"]')){const form=event.target.closest('form');const selection=$('[name="recipient_id"]',form);if(selection)selection.innerHTML=`<option value="">${tx('ui.messages.recipient_choose')}</option>`;const status=$('[data-recipient-status]',form);if(status)status.textContent='';}});
 document.addEventListener('change',event=>{if(event.target.id==='locale-picker'){changeLocale(event.target);return;}if(event.target.matches('[data-form="import"] input[name=file]')){state.importPreviewOK=false;state.importFile=event.target.files[0]||null;state.importReport=null;const result=$('#import-result');if(result)result.innerHTML='';}});
 $('#sidebar-backdrop').addEventListener('click',closeSidebar);
+dialog.addEventListener('close', flushDrafts);
+window.addEventListener('pagehide', flushDrafts);
+document.addEventListener('input', queueDraft);
+document.addEventListener('change', queueDraft);
 dialog.addEventListener('click',event=>{if(event.target===dialog){const r=dialog.getBoundingClientRect();if(event.clientX<r.left||event.clientX>r.right||event.clientY<r.top||event.clientY>r.bottom)closeDialog();}});
 document.addEventListener('keydown', event => {
     if (event.defaultPrevented || event.isComposing) return;
@@ -888,7 +1038,11 @@ setInterval(() => {
 }, 5000);
 window.addEventListener('resize', startVisibleSidebar);
 document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState !== 'visible' || !state.bootstrap) return;
+    if (document.visibilityState !== 'visible') {
+        flushDrafts();
+        return;
+    }
+    if (!state.bootstrap) return;
     const alreadyStarted = sidebarStarted;
     startVisibleSidebar();
     if ((alreadyStarted || state.route?.name === 'chat') && hasVisibleShoutbox()) void refreshShouts(true);

@@ -6,6 +6,7 @@ Use an isolated checkout with no live configuration or user data.
 composer install
 php vendor/bin/phpunit --no-progress
 node tests/appearance.mjs
+node tests/drafts.mjs
 python tools/verify_source.py
 ```
 
