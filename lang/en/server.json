@@ -15,6 +15,7 @@
   "server.registration_closed": "Registration is currently closed.",
   "server.invalid_credentials": "Incorrect email address or password.",
   "server.bookmarks_login": "Sign in to see your saved topics.",
+  "server.following_login": "Sign in to see followed topics.",
   "server.category_not_found": "The category was not found.",
   "server.thread_unavailable": "This topic is unavailable.",
   "server.post_unavailable": "This post is unavailable.",

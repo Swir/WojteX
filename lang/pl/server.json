@@ -15,6 +15,7 @@
   "server.registration_closed": "Rejestracja jest obecnie zamknięta.",
   "server.invalid_credentials": "Nieprawidłowy e-mail lub hasło.",
   "server.bookmarks_login": "Zaloguj się, aby zobaczyć zapisane tematy.",
+  "server.following_login": "Zaloguj się, aby zobaczyć obserwowane wątki.",
   "server.category_not_found": "Nie znaleziono działu.",
   "server.thread_unavailable": "Temat jest niedostępny.",
   "server.post_unavailable": "Ten wpis jest niedostępny.",

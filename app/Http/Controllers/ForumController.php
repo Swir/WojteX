@@ -5,6 +5,7 @@ use App\Services\ForumService as Forum;
 use App\Services\ExtensionRegistry;
 use App\Services\LanguageRegistry;
 use App\Services\ThreadSearchQuery;
+use App\Services\ThreadFollows;
 use App\Services\ThreadDeleteQuery;
 use App\Services\ThreadModerateQuery;
 use App\Services\ThreadCreateQuery;
@@ -52,7 +53,7 @@ class ForumController extends Controller
 
     public function threads(Request $request)
     {
-        $data=$request->validate(['category'=>'nullable|integer|min:1','q'=>'nullable|string|max:150','sort'=>'nullable|in:latest,popular,unanswered','page'=>'nullable|integer|min:1|max:100000','bookmarked'=>'nullable|boolean']);
+        $data=$request->validate(['category'=>'nullable|integer|min:1','q'=>'nullable|string|max:150','sort'=>'nullable|in:latest,popular,unanswered','page'=>'nullable|integer|min:1|max:100000','bookmarked'=>'nullable|boolean','following'=>'nullable|boolean','unread'=>'nullable|boolean']);
         $query=Forum::threadQuery($request->user());
         if (!empty($data['category'])) $query->where('t.category_id',$data['category']);
         if (ThreadSearchQuery::shouldSearch($data['q'] ?? null)) {
@@ -63,6 +64,11 @@ class ForumController extends Controller
         if ($request->boolean('bookmarked')) {
             abort_unless($request->user(),401,__('server.bookmarks_login'));
             $query->whereExists(fn($q)=>$q->selectRaw('1')->from('bookmarks')->whereColumn('thread_id','t.id')->where('user_id',$request->user()->id));
+        }
+        $unread = $request->boolean('unread');
+        if ($request->boolean('following') || $unread) {
+            abort_unless($request->user(), 401, __('server.following_login'));
+            ThreadFollows::filter($query, (int) $request->user()->id, $unread);
         }
         if (($data['sort']??'latest')==='unanswered') $query->whereRaw('(SELECT COUNT(*) FROM posts WHERE posts.thread_id=t.id) = 1');
         $query->orderByDesc('t.is_pinned');
@@ -113,9 +119,13 @@ class ForumController extends Controller
         $data = $request->validate([
             'page' => 'nullable|integer|min:1|max:100000',
             'post' => 'nullable|integer|min:1',
+            'unread' => 'nullable|boolean',
         ]);
-        $thread=Forum::thread($id,$request->user());
-        $postId = isset($data['post']) ? (int) $data['post'] : null;
+        $viewer = $request->user();
+        $thread=Forum::thread($id,$viewer);
+        $follow = $viewer ? ThreadFollows::status($id, (int) $viewer->id) : null;
+        $postId = isset($data['post']) ? (int) $data['post']
+            : ($request->boolean('unread') ? ($follow['first_unread_post_id'] ?? null) : null);
         $page = isset($data['page']) ? (int) $data['page'] : null;
         if ($postId !== null && $page === null) {
             $page = $this->pageContainingPost($id, $postId);
@@ -133,7 +143,16 @@ class ForumController extends Controller
             DB::table('threads')->where('id',$id)->increment('views'); ++$thread->views;
             $seen[]=$id; $request->session()->put('viewed_threads',array_slice($seen,-100));
         }
-        return response()->json(['thread'=>Forum::threadData($thread),'posts'=>Forum::postsData($posts->getCollection(),$request->user()),'page'=>$posts->currentPage(),'last_page'=>$posts->lastPage(),'total_posts'=>$posts->total(),'can_reply'=>Forum::canReplyCategory(DB::table('categories')->find($thread->category_id), $request->user())]);
+        return response()->json([
+            'thread' => Forum::threadData($thread),
+            'posts' => Forum::postsData($posts->getCollection(), $viewer),
+            'page' => $posts->currentPage(),
+            'last_page' => $posts->lastPage(),
+            'total_posts' => $posts->total(),
+            'can_reply' => Forum::canReplyCategory(DB::table('categories')->find($thread->category_id), $viewer),
+            'follow' => $follow,
+            'target_post_id' => $postId,
+        ]);
     }
 
     private function pageContainingPost(int $threadId, int $postId): int

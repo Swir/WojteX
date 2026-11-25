@@ -19,7 +19,7 @@ final class InstallDatabaseGuard
     private const OWN_TABLES = [
         'users', 'password_reset_tokens', 'sessions', 'cache', 'cache_locks',
         'jobs', 'job_batches', 'failed_jobs', 'categories', 'threads', 'posts',
-        'reactions', 'bookmarks', 'shouts', 'attachments', 'settings',
+        'reactions', 'bookmarks', 'thread_follows', 'shouts', 'attachments', 'settings',
         'plugin_states', 'audit_logs', 'import_maps', 'import_runs',
         'forum_groups', 'user_group_members', 'category_group_permissions',
         'private_messages', 'private_message_blocks', 'private_message_reports',

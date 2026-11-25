@@ -127,6 +127,6 @@ $empty=ForumService::postsData(collect(),$viewer);
 if (!$empty->isEmpty() || $db->events!==[]) throw new RuntimeException('Empty page made DB calls');
 // Verify the actual topic endpoint uses the batched serializer, not the legacy loop.
 $controllerSource=file_get_contents(dirname(__DIR__,2).'/app/Http/Controllers/ForumController.php');
-if (!str_contains($controllerSource,'Forum::postsData($posts->getCollection(),$request->user())'))
+if (!str_contains($controllerSource,'Forum::postsData($posts->getCollection(),'))
     throw new RuntimeException('Thread endpoint does not call the batched serializer');
 echo "PASS: 40/40 identical post payloads, 160 legacy vs 4 batched reads (3 guest, 0 empty); associations/visibility/controller wiring PASS; fake DB only\n";

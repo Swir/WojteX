@@ -1,6 +1,6 @@
 <?php
 use Illuminate\Support\Facades\Route;
-use App\Http\Controllers\{AuthController,ForumController,CommunityController,AdminController,AttachmentController,InstallController,MybbImportController,LanguageController,PasswordRecoveryController,GroupController,PrivateMessageController,PrivateMessageReportAdminController};
+use App\Http\Controllers\{AuthController,ForumController,CommunityController,AdminController,AttachmentController,InstallController,MybbImportController,LanguageController,PasswordRecoveryController,GroupController,PrivateMessageController,PrivateMessageReportAdminController,ThreadFollowController};
 
 Route::get('/install',[InstallController::class,'show']);
 Route::post('/install',[InstallController::class,'store'])->middleware('throttle:5,1');
@@ -30,11 +30,15 @@ Route::middleware('installed')->group(function(){
                 Route::patch('/threads/{id}',[ForumController::class,'moderate'])->whereNumber('id');
                 Route::delete('/threads/{id}',[ForumController::class,'deleteThread'])->whereNumber('id');
                 Route::post('/threads/{id}/bookmark',[ForumController::class,'bookmark'])->whereNumber('id');
+                Route::put('/threads/{id}/follow',[ThreadFollowController::class,'store'])->whereNumber('id');
+                Route::delete('/threads/{id}/follow',[ThreadFollowController::class,'destroy'])->whereNumber('id');
                 Route::patch('/posts/{id}',[ForumController::class,'editPost'])->whereNumber('id');
                 Route::delete('/posts/{id}',[ForumController::class,'deletePost'])->whereNumber('id');
                 Route::post('/posts/{id}/reaction',[ForumController::class,'reaction'])->whereNumber('id');
                 Route::post('/posts/{id}/attachments',[AttachmentController::class,'upload'])->whereNumber('id');
             });
+            Route::put('/threads/{id}/follow/read',[ThreadFollowController::class,'read'])->whereNumber('id')
+                ->middleware(['fresh_forum_reader', 'throttle:120,1,forum-follow-read']);
             Route::middleware('active_pm')->group(function(){
                 Route::get('/messages/blocks',[PrivateMessageController::class,'blockedContacts']);
                 Route::post('/messages/blocks',[PrivateMessageController::class,'blockContact'])->middleware('throttle:10,1');

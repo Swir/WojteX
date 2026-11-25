@@ -606,6 +606,69 @@ class ForumSecurityTest extends TestCase
         $this->actingAs($reader)->getJson('/api/threads?bookmarked=1')->assertOk()->assertJsonCount(0, 'data');
     }
 
+    public function test_following_tracks_new_replies_and_keeps_read_progress_monotonic(): void
+    {
+        $author = $this->user();
+        $reader = $this->user();
+        $otherViewer = $this->user();
+        $category = $this->category();
+        [$thread, $lastExisting] = $this->thread($author, $category);
+        [, $foreignPost] = $this->thread($author, $category, 'Another discussion');
+        for ($position = 2; $position <= 40; $position++) {
+            $lastExisting = $this->makePost($author, $thread, 'Existing post '.$position);
+        }
+        $follow = '/api/threads/'.$thread.'/follow';
+        $detail = '/api/threads/'.$thread;
+
+        $this->getJson('/api/threads?following=1')->assertUnauthorized();
+        $this->putJson($follow)->assertUnauthorized();
+        $this->actingAs($reader)->putJson($follow)->assertOk()->assertJsonPath('follow.last_read_post_id', $lastExisting)
+            ->assertJsonPath('follow.first_unread_post_id', null);
+        $this->getJson('/api/threads?following=1')->assertOk()->assertJsonPath('data.0.id', $thread);
+        $this->getJson('/api/threads?unread=1')->assertOk()->assertJsonCount(0, 'data');
+        $this->makePost($reader, $thread, 'My own reply');
+        $this->getJson('/api/threads?unread=1')->assertOk()->assertJsonCount(0, 'data');
+
+        $firstUnread = $this->makePost($author, $thread, 'First new reply');
+        $secondUnread = $this->makePost($author, $thread, 'Second new reply');
+        $this->putJson($follow)->assertOk()->assertJsonPath('follow.last_read_post_id', $lastExisting);
+        $this->getJson('/api/threads?unread=1')->assertOk()->assertJsonPath('data.0.first_unread_post_id', $firstUnread);
+        $this->getJson($detail.'?unread=1')->assertOk()->assertJsonPath('page', 2)->assertJsonPath('target_post_id', $firstUnread);
+        $this->putJson($follow.'/read', ['post_id' => $foreignPost])->assertNotFound();
+        $this->putJson($follow.'/read', ['post_id' => $firstUnread])->assertOk()
+            ->assertJsonPath('follow.first_unread_post_id', $secondUnread);
+        $this->putJson($follow.'/read', ['post_id' => $lastExisting])->assertOk()
+            ->assertJsonPath('follow.last_read_post_id', $firstUnread);
+        $this->putJson($follow.'/read', ['post_id' => $secondUnread])->assertOk()->assertJsonPath('follow.first_unread_post_id', null);
+        $this->getJson('/api/threads?unread=1')->assertOk()->assertJsonCount(0, 'data');
+
+        $this->actingAs($otherViewer)->getJson('/api/threads?following=1')->assertOk()->assertJsonCount(0, 'data');
+        $this->actingAs($reader)->deleteJson($follow)->assertOk()->assertExactJson(['follow' => null]);
+        $this->deleteJson($follow)->assertOk()->assertExactJson(['follow' => null]);
+        $this->putJson($follow.'/read', ['post_id' => $secondUnread])->assertOk()->assertExactJson(['follow' => null]);
+        $this->getJson('/api/threads?following=1')->assertOk()->assertJsonCount(0, 'data');
+    }
+
+    public function test_following_hides_a_thread_after_access_is_revoked(): void
+    {
+        $author = $this->user();
+        $reader = $this->user();
+        $category = $this->category();
+        [$thread] = $this->thread($author, $category, 'Discussion that became private');
+        $follow = '/api/threads/'.$thread.'/follow';
+
+        $this->actingAs($reader)->putJson($follow)->assertOk();
+        $newPost = $this->makePost($author, $thread, 'New private reply');
+        DB::table('categories')->where('id', $category)->update(['is_private' => true]);
+
+        $this->getJson('/api/threads?following=1')->assertOk()->assertJsonCount(0, 'data');
+        $this->getJson('/api/threads?unread=1')->assertOk()->assertJsonCount(0, 'data');
+        $this->getJson('/api/threads/'.$thread.'?unread=1')->assertNotFound();
+        $this->putJson($follow)->assertNotFound();
+        $this->putJson($follow.'/read', ['post_id' => $newPost])->assertNotFound();
+        $this->deleteJson($follow)->assertNotFound();
+    }
+
     public function test_rendered_markdown_rejects_script_html_event_handlers_and_javascript_urls(): void
     {
         $author = $this->user();

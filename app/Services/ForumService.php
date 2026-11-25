@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\User;
+use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
@@ -131,9 +132,14 @@ class ForumService
         ];
     }
 
-    public static function threadQuery(?User $user)
+    public static function visibleThreads(?User $user): Builder
     {
-        return DB::table('threads as t')->whereIn('t.category_id', self::visibleCategoryIds($user))
+        return DB::table('threads as t')->whereIn('t.category_id', self::visibleCategoryIds($user));
+    }
+
+    public static function threadQuery(?User $user): Builder
+    {
+        return self::visibleThreads($user)
             ->select('t.*')
             ->selectSub(DB::table('posts')->selectRaw('COUNT(*)')->whereColumn('thread_id','t.id'),'posts_count')
             ->selectSub(DB::table('posts')->select('body')->whereColumn('thread_id','t.id')->orderBy('id')->limit(1),'first_body')
@@ -169,7 +175,12 @@ class ForumService
 
     private static function formatThread(object $t, object $author, object $category): array
     {
-        return ['id'=>(int)$t->id,'title'=>$t->title,'slug'=>$t->slug,'category_id'=>(int)$t->category_id,'user_id'=>(int)$t->user_id,'is_pinned'=>(bool)$t->is_pinned,'is_locked'=>(bool)$t->is_locked,'views'=>(int)$t->views,'created_at'=>$t->created_at,'updated_at'=>$t->updated_at,'author'=>self::publicUser($author),'category'=>self::categoryData($category),'replies_count'=>max(0,(int)($t->posts_count??1)-1),'reactions_count'=>(int)($t->reactions_count??0),'excerpt'=>Str::limit(preg_replace('/\s+/u',' ',strip_tags($t->first_body??'')),150),'bookmarked'=>(bool)($t->bookmarked??false)];
+        $data = ['id'=>(int)$t->id,'title'=>$t->title,'slug'=>$t->slug,'category_id'=>(int)$t->category_id,'user_id'=>(int)$t->user_id,'is_pinned'=>(bool)$t->is_pinned,'is_locked'=>(bool)$t->is_locked,'views'=>(int)$t->views,'created_at'=>$t->created_at,'updated_at'=>$t->updated_at,'author'=>self::publicUser($author),'category'=>self::categoryData($category),'replies_count'=>max(0,(int)($t->posts_count??1)-1),'reactions_count'=>(int)($t->reactions_count??0),'excerpt'=>Str::limit(preg_replace('/\s+/u',' ',strip_tags($t->first_body??'')),150),'bookmarked'=>(bool)($t->bookmarked??false)];
+        if (property_exists($t, 'first_unread_post_id')) {
+            $data['first_unread_post_id'] = $t->first_unread_post_id === null ? null : (int) $t->first_unread_post_id;
+        }
+
+        return $data;
     }
 
     public static function thread(int $id, ?User $user): object

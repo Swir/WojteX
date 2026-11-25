@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Follow discussions and filter your list to topics with new replies. Jump to the first unread reply and keep your reading position as you scroll. Follow access uses the same category permissions as the forum.
 - Save a draft of a new topic or a reply in the current browser. Restore text after reloading, discard it explicitly, or choose which version to save when another tab changes the draft. Attachments are selected again when reopening a draft.
 - Copy a direct link from any post. The link finds the post's current page and keeps the topic's normal access checks.
 - Added an index for the latest discussion feed and reused Markdown rendering setup within a topic page.

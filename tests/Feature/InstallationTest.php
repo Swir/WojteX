@@ -76,7 +76,7 @@ class InstallationTest extends TestCase
         $this->post('/install', $this->input())->assertRedirect('/');
         $this->assertDatabaseCount('users', 1);
         $this->assertDatabaseCount('categories', 4);
-        foreach (['threads', 'posts', 'shouts', 'reactions', 'attachments', 'import_runs', 'import_maps'] as $table) {
+        foreach (['threads', 'posts', 'thread_follows', 'shouts', 'reactions', 'attachments', 'import_runs', 'import_maps'] as $table) {
             $this->assertDatabaseCount($table, 0);
         }
         $this->assertSame('fresh', $this->setting('setup_mode'));

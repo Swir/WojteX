@@ -27,6 +27,7 @@ const icons = {
     spark: '<path d="m12 3 2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5L12 3Z"/>',
     trophy: '<path d="M8 3h8v6a4 4 0 0 1-8 0V3ZM8 5H4v2a4 4 0 0 0 4 4m8-6h4v2a4 4 0 0 1-4 4M12 13v6m-4 2h8m-7-2h6"/>',
     bookmark: '<path d="M6 4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v17l-6-4-6 4V4Z"/>',
+    bell: '<path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/>',
     layers: '<path d="m12 3 10 5-10 5L2 8l10-5Zm-10 9 10 5 10-5M2 16l10 5 10-5"/>',
     users: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2m20 0v-2a4 4 0 0 0-3-3.87M15 3.13a4 4 0 0 1 0 7.75"/><circle cx="9" cy="7" r="4"/>',
     github: '<path d="M9 19c-4.3 1.3-4.3-2.2-6-2.7m12 5v-3.8a3.3 3.3 0 0 0-.9-2.6c3-.4 6.1-1.5 6.1-6.8A5.3 5.3 0 0 0 18.8 4a4.9 4.9 0 0 0-.1-3s-1.1-.4-3.6 1.3a12.4 12.4 0 0 0-6.5 0C6.1.6 5 1 5 1a4.9 4.9 0 0 0-.1 3 5.3 5.3 0 0 0-1.4 4.1c0 5.3 3.1 6.4 6.1 6.8a3.3 3.3 0 0 0-.9 2.5v3.9" transform="translate(1 1) scale(.9)"/>',
@@ -236,19 +237,54 @@ function updateNav(route) {
     });
     closeSidebar();
 }
-async function navigate(){if(!state.bootstrap)return;flushDrafts();const token=++state.viewToken;const route=routeInfo();state.route=route;state.thread=null;state.page=Number(route.query.get('page'))||1;state.threadPage=Number(route.query.get('page'))||1;state.sort=route.query.get('sort')||'latest';updateNav(route);$('#main-content').classList.remove('wx-thread-page');$('#main-content').classList.toggle('wx-home',route.name==='home');const view=$('#view');view.setAttribute('aria-busy','true');view.innerHTML=loading();if(quickSearchDialog.open)quickSearchDialog.close();$('#workspace-grid').classList.toggle('chat-view',route.name==='chat');try{
-    if(['home','latest','category','search','saved'].includes(route.name)){await renderFeed(route,token);}
-    else if(route.name==='categories'){renderDirectory();}
-    else if(route.name==='thread'&&route.id){await renderThread(route.id,token);}
-    else if(route.name==='rankings'){await renderRankings(token);}
-    else if(route.name==='messages'){await renderPrivateMessages(token);}
-    else if(route.name==='chat'){setHeader(tr('ui.shout.header'),tr('ui.shout.subtitle'),tr('ui.shout.eyebrow'));view.innerHTML=pluginEnabled('shoutbox')?`<div class="notice" style="margin-top:0">${tx('ui.shout.notice')}</div>${shoutPanel(true)}`:`<div class="panel">${empty(tr('ui.shout.disabled'),tr('ui.shout.disabled_help'),'chat')}</div>`;paintShouts();await refreshShouts(true);}
-    else if(route.name==='login'){setHeader(tr('ui.page.login_title'),tr('ui.page.login_subtitle'));view.innerHTML='<div class="panel">'+empty(tr('ui.page.join'),tr('ui.page.join_help'),'users',`<button class="button button-primary" data-action="login">${tx('ui.auth.sign_in')}</button>`)+'</div>';authModal('login');}
-    else if(route.name==='reset-password'){setHeader(tr('ui.auth.reset_title'),tr('ui.auth.reset_subtitle'));view.innerHTML=`<div class="panel">${empty(tr('ui.auth.reset_title'),tr('ui.auth.reset_subtitle'),'lock')}</div>`;resetPasswordModal(route);}
-    else if(route.name==='profile'){renderProfile();}
-    else if(route.name==='admin'){await renderAdmin(token);}
-    else {setHeader(tr('ui.page.not_found_title'),tr('ui.page.not_found_subtitle'));view.innerHTML=`<div class="panel">${empty(tr('ui.page.space_missing'),tr('ui.page.space_missing_help'),'search',`<a class="button button-primary" href="#/">${tx('ui.page.back_to_forum')}</a>`)}</div>`;}
-}catch(err){if(token!==state.viewToken)return;view.innerHTML=`<div class="panel">${empty(err.status===404?tr('ui.page.content_missing'):err.status===403?tr('ui.page.private'):tr('ui.page.load_failed'),err.message,err.status===403?'lock':'alert',`<button class="button button-secondary" data-action="retry-view">${tx('ui.common.retry')}</button>`)}</div>`;}finally{if(token===state.viewToken){view.setAttribute('aria-busy','false');paintIcons(view);startVisibleSidebar();}}}
+async function navigate() {
+    if (!state.bootstrap) return;
+    flushDrafts();
+    const pendingRead = finishReadTracking();
+    const token = ++state.viewToken;
+    const route = routeInfo();
+    state.route = route;
+    state.thread = null;
+    state.page = state.threadPage = Number(route.query.get('page')) || 1;
+    state.sort = route.query.get('sort') || 'latest';
+    updateNav(route);
+    $('#main-content').classList.remove('wx-thread-page');
+    $('#main-content').classList.toggle('wx-home', route.name === 'home');
+    const view = $('#view');
+    view.setAttribute('aria-busy', 'true');
+    view.innerHTML = loading();
+    if (quickSearchDialog.open) quickSearchDialog.close();
+    $('#workspace-grid').classList.toggle('chat-view', route.name === 'chat');
+    try {
+        if (route.name === 'following' && pendingRead) {
+            await pendingRead;
+            if (token !== state.viewToken) return;
+        }
+        if(['home','latest','category','search','saved','following'].includes(route.name)){await renderFeed(route,token);}
+        else if(route.name==='categories'){renderDirectory();}
+        else if(route.name==='thread'&&route.id){await renderThread(route.id,token);}
+        else if(route.name==='rankings'){await renderRankings(token);}
+        else if(route.name==='messages'){await renderPrivateMessages(token);}
+        else if(route.name==='chat'){setHeader(tr('ui.shout.header'),tr('ui.shout.subtitle'),tr('ui.shout.eyebrow'));view.innerHTML=pluginEnabled('shoutbox')?`<div class="notice" style="margin-top:0">${tx('ui.shout.notice')}</div>${shoutPanel(true)}`:`<div class="panel">${empty(tr('ui.shout.disabled'),tr('ui.shout.disabled_help'),'chat')}</div>`;paintShouts();await refreshShouts(true);}
+        else if(route.name==='login'){setHeader(tr('ui.page.login_title'),tr('ui.page.login_subtitle'));view.innerHTML='<div class="panel">'+empty(tr('ui.page.join'),tr('ui.page.join_help'),'users',`<button class="button button-primary" data-action="login">${tx('ui.auth.sign_in')}</button>`)+'</div>';authModal('login');}
+        else if(route.name==='reset-password'){setHeader(tr('ui.auth.reset_title'),tr('ui.auth.reset_subtitle'));view.innerHTML=`<div class="panel">${empty(tr('ui.auth.reset_title'),tr('ui.auth.reset_subtitle'),'lock')}</div>`;resetPasswordModal(route);}
+        else if(route.name==='profile'){renderProfile();}
+        else if(route.name==='admin'){await renderAdmin(token);}
+        else {setHeader(tr('ui.page.not_found_title'),tr('ui.page.not_found_subtitle'));view.innerHTML=`<div class="panel">${empty(tr('ui.page.space_missing'),tr('ui.page.space_missing_help'),'search',`<a class="button button-primary" href="#/">${tx('ui.page.back_to_forum')}</a>`)}</div>`;}
+    } catch (err) {
+        if (token !== state.viewToken) return;
+        const title = err.status === 404 ? tr('ui.page.content_missing')
+            : err.status === 403 ? tr('ui.page.private') : tr('ui.page.load_failed');
+        const retry = `<button class="button button-secondary" data-action="retry-view">${tx('ui.common.retry')}</button>`;
+        view.innerHTML = `<div class="panel">${empty(title, err.message, err.status === 403 ? 'lock' : 'alert', retry)}</div>`;
+    } finally {
+        if (token === state.viewToken) {
+            view.setAttribute('aria-busy', 'false');
+            paintIcons(view);
+            startVisibleSidebar();
+        }
+    }
+}
 function welcomePanel() {
     if (!pluginEnabled('welcome')) return '';
     const settings = state.bootstrap.settings || {};
@@ -307,22 +343,53 @@ function renderDirectory() {
         : `<div class="panel">${empty(tr('ui.nav.no_categories'), tr('ui.directory.empty'), 'layers')}</div>`;
 }
 function categoryTag(category){return category?`<a class="tag" href="#/category/${Number(category.id)}" style="--tone:${tone(category.color)}">${e(category.name)}</a>`:'';}
-function topicRow(t){return `<article class="topic-row">${avatar(t.author)}<div class="topic-row-content"><div class="topic-tags">${categoryTag(t.category)}${t.is_pinned?`<span class="tag tag-pinned">${icon('pin')}${tx('ui.topic.pinned')}</span>`:''}${t.is_locked?`<span class="tag tag-neutral">${icon('lock')}${tx('ui.topic.closed')}</span>`:''}${t.category?.is_private?`<span class="tag tag-private">${icon('lock')}${tx('ui.topic.private')}</span>`:''}</div><a href="#/thread/${Number(t.id)}" class="topic-title">${e(t.title)}</a>${t.excerpt?`<p class="topic-excerpt">${e(t.excerpt)}</p>`:''}<div class="topic-meta"><span class="author-name">${e(t.author?.name||tr('ui.user.fallback'))}</span><span class="meta-dot">·</span><time title="${e(dateTitle(t.updated_at||t.created_at))}">${e(relative(t.updated_at||t.created_at))}</time>${t.bookmarked?`<span title="${tx('ui.topic.saved_title')}">${icon('bookmark')}</span>`:''}</div></div><a href="#/thread/${Number(t.id)}" class="topic-stats" aria-label="${e(counted(t.replies_count,'replies'))}, ${e(counted(t.views,'views'))}"><span>${icon('message')}${compact(t.replies_count)}</span><span class="stat-views">${icon('eye')}${compact(t.views)}</span></a></article>`;}
+function topicRow(topic) {
+    const url = `#/thread/${Number(topic.id)}`;
+    const timestamp = topic.updated_at || topic.created_at;
+    return `<article class="topic-row">
+        ${avatar(topic.author)}
+        <div class="topic-row-content">
+            <div class="topic-tags">
+                ${categoryTag(topic.category)}
+                ${topic.is_pinned ? `<span class="tag tag-pinned">${icon('pin')}${tx('ui.topic.pinned')}</span>` : ''}
+                ${topic.is_locked ? `<span class="tag tag-neutral">${icon('lock')}${tx('ui.topic.closed')}</span>` : ''}
+                ${topic.first_unread_post_id ? `<a class="tag wx-unread-link" href="${url}?unread=1">${icon('spark')}${tx('ui.follow.new_replies')}</a>` : ''}
+                ${topic.category?.is_private ? `<span class="tag tag-private">${icon('lock')}${tx('ui.topic.private')}</span>` : ''}
+            </div>
+            <a href="${url}" class="topic-title">${e(topic.title)}</a>
+            ${topic.excerpt ? `<p class="topic-excerpt">${e(topic.excerpt)}</p>` : ''}
+            <div class="topic-meta">
+                <span class="author-name">${e(topic.author?.name || tr('ui.user.fallback'))}</span><span class="meta-dot">·</span>
+                <time title="${e(dateTitle(timestamp))}">${e(relative(timestamp))}</time>
+                ${topic.bookmarked ? `<span title="${tx('ui.topic.saved_title')}">${icon('bookmark')}</span>` : ''}
+            </div>
+        </div>
+        <a href="${url}" class="topic-stats" aria-label="${e(counted(topic.replies_count, 'replies'))}, ${e(counted(topic.views, 'views'))}">
+            <span>${icon('message')}${compact(topic.replies_count)}</span><span class="stat-views">${icon('eye')}${compact(topic.views)}</span>
+        </a>
+    </article>`;
+}
 async function renderFeed(route, token) {
     const view = $('#view');
     const category = (state.bootstrap.categories || []).find(item => item.id === route.id);
     const term = route.query.get('q') || '';
+    const following = route.name === 'following';
+    const unread = following && route.query.get('unread') === '1';
     const headings = {
         home: [state.bootstrap.settings?.site_name || 'WojteX Forum', state.bootstrap.settings?.tagline || tr('ui.feed.home_subtitle')],
         latest: [tr('ui.feed.latest_title'), tr('ui.feed.latest_subtitle')],
         category: [category?.name || tr('ui.feed.category_title'), category?.description || tr('ui.feed.category_subtitle')],
         search: [tr('ui.feed.search_title'), tr('ui.feed.search_subtitle', {query: term})],
-        saved: [tr('ui.feed.saved_title'), tr('ui.feed.saved_subtitle')]
+        saved: [tr('ui.feed.saved_title'), tr('ui.feed.saved_subtitle')],
+        following: [tr('ui.follow.title'), tr('ui.follow.subtitle')]
     };
-    const eyebrow = {home: '', category: tr('ui.feed.eyebrow_category')};
+    const eyebrow = {home: '', following: '', category: tr('ui.feed.eyebrow_category')};
     setHeader(...headings[route.name], eyebrow[route.name] ?? tr('ui.feed.eyebrow'));
-    if (route.name === 'saved' && !state.user) {
-        view.innerHTML = `<div class="panel">${empty(tr('ui.feed.saved_empty_title'), tr('ui.feed.saved_login_help'), 'bookmark', `<button class="button button-primary" data-action="login">${tx('ui.auth.sign_in')}</button>`)}</div>`;
+    if ((route.name === 'saved' || following) && !state.user) {
+        const help = following
+            ? [tr('ui.follow.title'), tr('ui.follow.login_help'), 'bell']
+            : [tr('ui.feed.saved_empty_title'), tr('ui.feed.saved_login_help'), 'bookmark'];
+        view.innerHTML = `<div class="panel">${empty(...help, `<button class="button button-primary" data-action="login">${tx('ui.auth.sign_in')}</button>`)}</div>`;
         return;
     }
 
@@ -330,16 +397,22 @@ async function renderFeed(route, token) {
     if (route.name === 'category') query.set('category', String(route.id));
     if (route.name === 'search') query.set('q', term);
     if (route.name === 'saved') query.set('bookmarked', '1');
+    if (following) query.set('following', '1');
+    if (unread) query.set('unread', '1');
     const results = await request('/api/threads?' + query);
     if (token !== state.viewToken) return;
 
     const headingsByFeed = {
         search: tr('ui.feed.search_results'),
-        saved: tr('ui.feed.saved_discussions')
+        saved: tr('ui.feed.saved_discussions'),
+        following: tr('ui.follow.list_title')
     };
     const noResults = {
         search: [tr('ui.feed.search_empty'), tr('ui.feed.search_empty_help'), 'search', `<button class="button button-secondary" data-action="quick-search">${tx('ui.quick_search.open')}</button>`],
-        saved: [tr('ui.feed.collection_empty'), tr('ui.feed.collection_empty_help'), 'bookmark']
+        saved: [tr('ui.feed.collection_empty'), tr('ui.feed.collection_empty_help'), 'bookmark'],
+        following: unread
+            ? [tr('ui.follow.caught_up'), tr('ui.follow.caught_up_help'), 'check-circle']
+            : [tr('ui.follow.empty'), tr('ui.follow.empty_help'), 'bell', `<a class="button button-secondary" href="#/latest">${tx('ui.nav.latest')}</a>`]
     };
     const firstTopic = [tr('ui.feed.first_discussion'), tr('ui.feed.first_help'), 'message', `<button class="button button-secondary" data-action="new-topic">${icon('plus')}${tx('ui.topic.create')}</button>`];
     const sorting = [
@@ -347,15 +420,21 @@ async function renderFeed(route, token) {
         ['popular', 'fire', tx('ui.feed.popular')],
         ['unanswered', 'message', tx('ui.feed.unanswered')]
     ];
+    const controls = following
+        ? `<nav class="topic-tabs" aria-label="${tx('ui.follow.filter')}">
+            <a href="#/following" class="topic-tab${unread ? '' : ' active'}"${unread ? '' : ' aria-current="page"'}>${icon('bell')}${tx('ui.follow.all')}</a>
+            <a href="#/following?unread=1" class="topic-tab${unread ? ' active' : ''}"${unread ? ' aria-current="page"' : ''}>${icon('spark')}${tx('ui.follow.unread')}</a>
+        </nav>`
+        : `<div class="topic-tabs" role="group" aria-label="${tx('ui.feed.sort_label')}">
+            ${sorting.map(([value, symbol, label]) => `<button type="button" class="topic-tab ${state.sort === value ? 'active' : ''}" aria-pressed="${state.sort === value}" data-action="sort" data-sort="${value}">${icon(symbol)}${label}</button>`).join('')}
+        </div>`;
     view.innerHTML = `
         ${route.name === 'home' ? welcomePanel() : ''}
         ${category?.is_private ? `<div class="private-category-banner">${icon('lock')} ${tx('ui.feed.private_notice')}</div>` : ''}
         ${['home', 'category'].includes(route.name) ? feedCategories(route) : ''}
         <section class="panel threads-panel" id="forum-list" aria-labelledby="discussion-heading">
             <div class="discussion-toolbar"><h2 id="discussion-heading">${e(headingsByFeed[route.name] || tr('ui.feed.discussions_title'))}</h2><small>${e(counted(results.total, 'topics'))}</small></div>
-            <div class="topic-tabs" role="group" aria-label="${tx('ui.feed.sort_label')}">
-                ${sorting.map(([value, symbol, label]) => `<button type="button" class="topic-tab ${state.sort === value ? 'active' : ''}" aria-pressed="${state.sort === value}" data-action="sort" data-sort="${value}">${icon(symbol)}${label}</button>`).join('')}
-            </div>
+            ${controls}
             <div>${results.data?.length ? results.data.map(topicRow).join('') : empty(...(noResults[route.name] || firstTopic))}</div>
             ${pagination(results.current_page || 1, results.last_page || 1, results.total || 0)}
         </section>`;
@@ -364,8 +443,10 @@ function pagination(current,last,total,label='topics'){if(last<=1)return '';retu
 async function renderThread(id,token){
     const query = new URLSearchParams();
     const targetPost = state.route.query.get('post');
+    const unread = state.route.query.get('unread') === '1';
     if (targetPost) query.set('post', targetPost);
-    if (!targetPost || state.route.query.has('page')) query.set('page', state.threadPage);
+    if (unread) query.set('unread', '1');
+    if ((!targetPost && !unread) || state.route.query.has('page')) query.set('page', state.threadPage);
     const r=await request(`/api/threads/${id}?${query}`);
     if(token!==state.viewToken)return;
     state.thread=r;
@@ -387,6 +468,7 @@ async function renderThread(id,token){
             <div class="thread-head-actions">
                 ${canReply?`<button class="button button-primary" data-action="focus-reply">${icon('message')}${tx('ui.topic.reply')}</button>`:''}
                 <button class="button button-secondary" data-action="bookmark" data-id="${id}" aria-pressed="${!!t.bookmarked}">${icon('bookmark')}${e(t.bookmarked?tr('ui.topic.saved'):tr('ui.topic.save'))}</button>
+                <button type="button" class="button button-secondary wx-follow-button" data-action="follow-thread" data-id="${id}" aria-label="${tx('ui.follow.follow')}" aria-pressed="${!!r.follow}">${followButtonContent(r.follow)}</button>
                 <button class="button button-ghost" data-action="copy-thread">${icon('link')}${tx('ui.topic.copy')}</button>
             </div>
             ${isMod()?`<details class="thread-moderation"><summary>${icon('shield')}${tx('ui.topic.moderation')}</summary><div class="thread-head-actions">
@@ -395,18 +477,95 @@ async function renderThread(id,token){
                 <button class="button button-small button-danger" data-action="delete-thread" data-id="${id}">${icon('trash')}${tx('ui.topic.delete')}</button>
             </div></details>`:''}
         </section>
-        <div class="posts-list">${(r.posts||[]).map((p,i)=>postCard(p,(r.page-1)*40+i+1)).join('')}</div>
+        <div class="posts-list">${r.posts.map((post, index) => {
+            const startsUnread = post.id === r.follow?.first_unread_post_id;
+            const separator = startsUnread ? `<div class="wx-unread-divider" role="separator" aria-label="${tx('ui.follow.new_replies')}"><span aria-hidden="true">${tx('ui.follow.new_replies')}</span></div>` : '';
+            return separator + postCard(post, (r.page - 1) * 40 + index + 1);
+        }).join('')}</div>
         ${pagination(r.page||1,r.last_page||1,r.total_posts||r.posts?.length||0,'posts')}${replyForm(t)}`;
 
     const reply = $('#reply-panel form[data-form="reply"]');
     if (reply) bindDraft(reply, id);
 
-    const target = document.getElementById('post-' + Number(targetPost));
+    const target = document.getElementById('post-' + Number(r.target_post_id ?? targetPost));
     if (target) {
         target.tabIndex = -1;
         target.focus({preventScroll: true});
         target.scrollIntoView({block: 'start'});
     }
+    trackThreadReads(r);
+}
+
+function followButtonContent(follow) {
+    return icon('bell') + (follow ? tx('ui.follow.following') : tx('ui.follow.follow'));
+}
+
+let readTracker = null;
+
+function finishReadTracking() {
+    if (!readTracker) return;
+    const tracker = readTracker;
+    readTracker = null;
+    tracker.observer.disconnect();
+    return tracker.flush();
+}
+
+function trackThreadReads(detail) {
+    const firstUnread = detail.follow?.first_unread_post_id;
+    if (!firstUnread || !state.user || !window.IntersectionObserver) return;
+    const viewerId = state.user.id;
+    const csrf = state.csrf;
+    const posts = detail.posts.filter(post => post.id >= firstUnread && post.user_id !== viewerId);
+    if (posts[0]?.id !== firstUnread) return;
+
+    const cards = posts.map(post => document.getElementById(`post-${post.id}`));
+    const seen = new Set();
+    let cursor = 0;
+    let lastSent = 0;
+    let timer;
+    let pending;
+
+    function flush() {
+        clearTimeout(timer);
+        timer = null;
+        const through = posts[cursor - 1]?.id;
+        if (!through || through === lastSent) return pending;
+        lastSent = through;
+        pending = Promise.resolve(pending).then(() => {
+            if (state.user?.id !== viewerId || state.csrf !== csrf) return;
+            // Background acknowledgments must not retry with another session's CSRF token.
+            return request(`/api/threads/${detail.thread.id}/follow/read`, {
+                method: 'PUT', body: {post_id: through}, keepalive: true, signal: AbortSignal.timeout(4500)
+            }, true);
+        }).catch(() => {
+            if (lastSent === through) lastSent = 0;
+        });
+        return pending;
+    }
+
+    const observer = new IntersectionObserver(entries => {
+        if (document.visibilityState !== 'visible' || readTracker?.observer !== observer) return;
+        for (const entry of entries) {
+            if (!entry.isIntersecting || entry.intersectionRect.height <= 0) continue;
+            seen.add(entry.target);
+            observer.unobserve(entry.target);
+        }
+        const previous = cursor;
+        while (cursor < cards.length && seen.has(cards[cursor])) ++cursor;
+        if (cursor > previous) {
+            clearTimeout(timer);
+            timer = setTimeout(flush, 450);
+        }
+    }, {rootMargin: '-64px 0px -22% 0px'});
+
+    readTracker = {observer, flush, refresh() {
+        for (const card of cards) {
+            if (!card || seen.has(card)) continue;
+            observer.unobserve(card);
+            observer.observe(card);
+        }
+    }};
+    readTracker.refresh();
 }
 
 function postCard(p,number){const canEdit=state.user&&(state.user.id===p.author?.id||isMod())&&(!state.thread?.thread?.is_locked||isMod())&&(state.thread?.can_reply!==false||isMod());return `<article class="panel post-card" id="post-${Number(p.id)}"><div class="post-top">${avatar(p.author)}<div class="post-author"><strong>${e(p.author?.name||tr('ui.user.fallback'))}</strong>${role(p.author)}<small><time title="${e(dateTitle(p.created_at))}">${e(relative(p.created_at))}</time>${e(p.updated_at&&p.updated_at!==p.created_at?tr('ui.common.edited_suffix'):'')}</small></div><span class="post-number">#${number}</span></div><div class="post-body">${p.body_html||e(p.body).replace(/\n/g,'<br>')}</div>${p.attachments?.length?`<div class="attachments">${p.attachments.map(a=>`<a class="attachment" href="/attachments/${Number(a.id)}" target="_blank" rel="noopener noreferrer">${icon('paperclip')}${e(a.name||a.original_name||tr('ui.post.attachment'))}${a.size?`<span class="muted">(${formatBytes(a.size)})</span>`:''}</a>`).join('')}</div>`:''}<div class="post-actions"><div class="post-actions-group"><button type="button" class="subtle-button wx-copy-post" data-action="copy-post" data-id="${Number(p.id)}" aria-label="${tx('ui.post.copy_link_label',{number})}">${icon('link')}${tx('ui.post.copy_link')}</button><button class="reaction-button ${p.reacted?'active':''}" data-action="react" data-id="${Number(p.id)}" aria-pressed="${!!p.reacted}" ${state.thread?.can_reply===false?'disabled':state.user?.id===p.author?.id?`disabled title="${tx('ui.post.own_reaction')}"`:''}>${icon('heart')}<span>${count(p.reactions_count)}</span></button>${state.thread?.can_reply===false?'':`<button class="subtle-button" data-action="quote" data-id="${Number(p.id)}">${tx('ui.post.quote')}</button>`}</div>${canEdit?`<div class="post-actions-group"><button class="subtle-button" data-action="edit-post" data-id="${Number(p.id)}">${tx('ui.common.edit')}</button><button class="subtle-button" data-action="attach-post" data-id="${Number(p.id)}">${tx('ui.post.add_file')}</button>${number!==1?`<button class="subtle-button" data-action="delete-post" data-id="${Number(p.id)}">${tx('ui.common.delete')}</button>`:''}</div>`:''}</div></article>`;}
@@ -666,6 +825,7 @@ function openQuickSearch() {
         quickSearchLink('#/latest', tr('ui.nav.latest'), 'clock'),
         quickSearchLink('#/categories', tr('ui.directory.title'), 'layers'),
         ...(state.user ? [quickSearchLink('#/saved', tr('ui.nav.saved'), 'bookmark'),
+            quickSearchLink('#/following', tr('ui.follow.title'), 'bell'),
             quickSearchLink('#/messages', tr('ui.messages.title'), 'message')] : [])
     ];
     $('[data-quick-destinations] ul', quickSearchDialog).innerHTML = destinations.join('');
@@ -859,13 +1019,19 @@ case 'register':authModal('register');break;
 case 'forgot-password':forgotPasswordModal();break;
 case 'account':accountModal();break;
 case 'close-dialog':case 'close-on-nav':closeDialog();break;
-case 'logout':await request('/api/auth/logout',{method:'POST'});closeDialog();state.shouts=[];state.lastShoutId=0;await reloadData();toast(tr('ui.auth.signed_out'));break;
+case 'logout':await finishReadTracking();await request('/api/auth/logout',{method:'POST'});closeDialog();state.shouts=[];state.lastShoutId=0;await reloadData();toast(tr('ui.auth.signed_out'));break;
 case 'new-topic':newTopicModal();break;
 case 'discard-draft':discardDraft(button.closest('form'));break;
 case 'overwrite-draft':saveDraft(button.closest('form'), true);break;
 case 'quick-search':openQuickSearch();break;
 case 'sort':updateRouteQuery({sort:button.dataset.sort,page:null});break;
-case 'page':updateRouteQuery({page:button.dataset.page,post:null});window.scrollTo({top:0,behavior:'smooth'});break;
+case 'page': {
+    const next = {page: button.dataset.page};
+    if (state.route?.name === 'thread') Object.assign(next, {post: null, unread: null});
+    updateRouteQuery(next);
+    window.scrollTo({top: 0, behavior: 'smooth'});
+    break;
+}
 case 'message-find':{
     const form=button.closest('[data-form="private-message"]');
     if(!form)break;
@@ -903,6 +1069,20 @@ case 'retry-view':await navigate();break;
 case 'retry-bootstrap':await init();break;
 case 'refresh-shouts':await refreshShouts(true);break;
 case 'bookmark':if(ensureAuth()){const r=await request(`/api/threads/${id}/bookmark`,{method:'POST'});button.classList.toggle('button-primary',r.bookmarked);button.classList.toggle('button-secondary',!r.bookmarked);button.innerHTML=icon('bookmark')+e(r.bookmarked?tr('ui.topic.saved'):tr('ui.topic.save'));if(state.thread)state.thread.thread.bookmarked=r.bookmarked;toast(r.bookmarked?tr('ui.topic.saved_to_collection'):tr('ui.topic.removed_from_saved'));}break;
+case 'follow-thread': {
+    if (!ensureAuth()) break;
+    const detail = state.thread;
+    if (detail?.thread.id !== id) break;
+    const {follow} = await request(`/api/threads/${id}/follow`, {method: detail.follow ? 'DELETE' : 'PUT'});
+    if (detail !== state.thread) break;
+    finishReadTracking();
+    detail.follow = follow;
+    button.setAttribute('aria-pressed', String(Boolean(follow)));
+    button.innerHTML = followButtonContent(follow);
+    trackThreadReads(detail);
+    toast(follow ? tr('ui.follow.added') : tr('ui.follow.removed'));
+    break;
+}
 case 'copy-thread':
     await copyForumLink(`#/thread/${state.thread.thread.id}`, tr('ui.topic.link_title'), tr('ui.topic.address'), tr('ui.topic.link_copied'));
     break;
@@ -952,7 +1132,7 @@ case 'reply': {
     clearPublishedDraft(form, submitted);
     const route = routeInfo();
     if (route.name === 'thread' && route.id === id) {
-        updateRouteQuery({page: result.page ?? state.threadPage, post: result.post.id});
+        updateRouteQuery({page: result.page ?? state.threadPage, post: result.post.id, unread: null});
     }
     toast(tr('ui.post.published'));
     await updateStats();
@@ -998,7 +1178,10 @@ document.addEventListener('input',event=>{if(event.target.matches('[data-form="p
 document.addEventListener('change',event=>{if(event.target.id==='locale-picker'){changeLocale(event.target);return;}if(event.target.matches('[data-form="import"] input[name=file]')){state.importPreviewOK=false;state.importFile=event.target.files[0]||null;state.importReport=null;const result=$('#import-result');if(result)result.innerHTML='';}});
 $('#sidebar-backdrop').addEventListener('click',closeSidebar);
 dialog.addEventListener('close', flushDrafts);
-window.addEventListener('pagehide', flushDrafts);
+window.addEventListener('pagehide', () => {
+    flushDrafts();
+    finishReadTracking();
+});
 document.addEventListener('input', queueDraft);
 document.addEventListener('change', queueDraft);
 dialog.addEventListener('click',event=>{if(event.target===dialog){const r=dialog.getBoundingClientRect();if(event.clientX<r.left||event.clientX>r.right||event.clientY<r.top||event.clientY>r.bottom)closeDialog();}});
@@ -1040,8 +1223,10 @@ window.addEventListener('resize', startVisibleSidebar);
 document.addEventListener('visibilitychange', () => {
     if (document.visibilityState !== 'visible') {
         flushDrafts();
+        readTracker?.flush();
         return;
     }
+    readTracker?.refresh();
     if (!state.bootstrap) return;
     const alreadyStarted = sidebarStarted;
     startVisibleSidebar();
