@@ -21,9 +21,33 @@ use Illuminate\Support\Str;
 
 class ForumController extends Controller
 {
+    private const POSTS_PER_PAGE = 40;
+
     public function bootstrap(Request $request)
     {
-        return response()->json(['user'=>$request->user()?Forum::selfUser($request->user()):null,'csrf_token'=>csrf_token(),'settings'=>Forum::settings(),'categories'=>Forum::categories($request->user()),'stats'=>Forum::stats($request->user()),'plugins'=>ExtensionRegistry::catalog(),'version'=>Forum::VERSION,'i18n'=>app(LanguageRegistry::class)->payload()]);
+        $user = $request->user();
+        $community = $request->query('stats') === '0'
+            ? ['categories' => Forum::categories($user)]
+            : Forum::summary($user);
+
+        $data = [
+            'user' => $user ? Forum::selfUser($user) : null,
+            'csrf_token' => csrf_token(),
+            'settings' => Forum::settings(),
+            ...$community,
+            'plugins' => ExtensionRegistry::catalog(),
+            'version' => Forum::VERSION,
+        ];
+        if ($request->query('page_locale') !== app()->getLocale()) {
+            $data['i18n'] = app(LanguageRegistry::class)->payload();
+        }
+
+        return response()->json($data);
+    }
+
+    public function summary(Request $request)
+    {
+        return response()->json(Forum::summary($request->user()));
     }
 
     public function threads(Request $request)
@@ -94,7 +118,7 @@ class ForumController extends Controller
             DB::table('threads')->where('id',$id)->increment('views'); ++$thread->views;
             $seen[]=$id; $request->session()->put('viewed_threads',array_slice($seen,-100));
         }
-        $posts=DB::table('posts')->where('thread_id',$id)->orderBy('id')->paginate(40);
+        $posts=DB::table('posts')->where('thread_id',$id)->orderBy('id')->paginate(self::POSTS_PER_PAGE);
         return response()->json(['thread'=>Forum::threadData($thread),'posts'=>Forum::postsData($posts->getCollection(),$request->user()),'page'=>$posts->currentPage(),'last_page'=>$posts->lastPage(),'total_posts'=>$posts->total(),'can_reply'=>Forum::canReplyCategory(DB::table('categories')->find($thread->category_id), $request->user())]);
     }
 
@@ -104,7 +128,7 @@ class ForumController extends Controller
         $thread=Forum::thread($id,$request->user());
         abort_unless(Forum::canReplyCategory(DB::table('categories')->find($thread->category_id), $request->user()), 403, __('server.category_post_forbidden'));
         abort_if($thread->is_locked && !Forum::isModerator($request->user()),403,__('server.thread_locked'));
-        $postId=DB::transaction(function()use($id,$request,$data){
+        [$postId, $page] = DB::transaction(function()use($id,$request,$data){
             // A ban, thread lock, or staff demotion can commit after preflight.
             // Require the current account and lock/role in the same INSERT.
             $actorId=(int)$request->user()->id;
@@ -116,10 +140,14 @@ class ForumController extends Controller
             abort_unless($inserted === 1,403,__('server.category_post_forbidden'));
             $postId=(int) DB::connection()->getPdo()->lastInsertId();
             DB::table('threads')->where('id',$id)->update(['updated_at'=>now()]);
-            return $postId;
+            $position = DB::table('posts')->where('thread_id', $id)->where('id', '<=', $postId)->count();
+            return [$postId, intdiv($position - 1, self::POSTS_PER_PAGE) + 1];
         });
         Event::dispatch('veyra.post.created',[$postId,$request->user()->id]);
-        return response()->json(['post'=>Forum::postData(DB::table('posts')->find($postId),$request->user())],201);
+        return response()->json([
+            'post' => Forum::postData(DB::table('posts')->find($postId), $request->user()),
+            'page' => $page,
+        ], 201);
     }
 
     public function moderate(Request $request,int $id)

@@ -13,6 +13,7 @@ assert r.returncode == 0, r.stdout + '\n' + r.stderr
 routes = json.loads(r.stdout)
 protected = {
     ('GET|HEAD', 'api/bootstrap'),
+    ('GET|HEAD', 'api/forum-summary'),
     ('GET|HEAD', 'api/threads'),
     ('GET|HEAD', 'api/threads/quick-search'),
     ('GET|HEAD', 'api/threads/{id}'),

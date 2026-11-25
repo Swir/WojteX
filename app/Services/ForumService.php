@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Illuminate\Support\Collection;
+use League\CommonMark\GithubFlavoredMarkdownConverter;
 
 class ForumService
 {
@@ -178,6 +179,11 @@ class ForumService
 
     public static function bodyHtml(string $body, string $format='markdown'): string
     {
+        return self::renderPostBody($body, $format);
+    }
+
+    private static function renderPostBody(string $body, string $format, ?GithubFlavoredMarkdownConverter $markdown = null): string
+    {
         if ($format==='bbcode') {
             // Preserve unknown BBCode verbatim. Render only a conservative non-HTML subset.
             $safe=e($body);
@@ -186,7 +192,16 @@ class ForumService
             }
             return '<div class="legacy-post">'.nl2br($safe).'</div>';
         }
-        return Str::markdown($body,['html_input'=>'strip','allow_unsafe_links'=>false,'max_nesting_level'=>20]);
+        return (string) ($markdown ?? self::markdownConverter())->convert($body);
+    }
+
+    private static function markdownConverter(): GithubFlavoredMarkdownConverter
+    {
+        return new GithubFlavoredMarkdownConverter([
+            'html_input' => 'strip',
+            'allow_unsafe_links' => false,
+            'max_nesting_level' => 20,
+        ]);
     }
 
     /**
@@ -227,22 +242,24 @@ class ForumService
             ->orderBy('id')->get(['post_id', 'id', 'name', 'mime', 'size'])
             ->groupBy('post_id');
 
+        $markdown = self::markdownConverter();
         return $posts->map(fn ($post) => self::formatPost(
             $post,
             $authors->get($post->user_id),
             (int) ($counts->get($post->id) ?? 0),
             isset($reacted[$post->id]),
-            $attachments->get($post->id) ?? collect()
+            $attachments->get($post->id) ?? collect(),
+            $markdown
         ));
     }
 
-    private static function formatPost(object $post, object $author, int $reactions, bool $reacted, Collection $attachments): array
+    private static function formatPost(object $post, object $author, int $reactions, bool $reacted, Collection $attachments, ?GithubFlavoredMarkdownConverter $markdown = null): array
     {
         return [
             'id'=>(int)$post->id,'thread_id'=>(int)$post->thread_id,
             'user_id'=>(int)$post->user_id,'body'=>$post->body,
             'body_format'=>$post->body_format,
-            'body_html'=>self::bodyHtml($post->body,$post->body_format),
+            'body_html'=>self::renderPostBody($post->body,$post->body_format,$markdown),
             'created_at'=>$post->created_at,'updated_at'=>$post->updated_at,
             'author'=>self::publicUser($author),'reactions_count'=>$reactions,
             'reacted'=>$reacted,
@@ -258,8 +275,32 @@ class ForumService
 
     public static function stats(?User $user): array
     {
-        $threads=DB::table('threads')->whereIn('category_id',self::visibleCategoryIds($user));
-        return ['users'=>DB::table('users')->where('is_banned',false)->count(),'threads'=>(clone $threads)->count(),'posts'=>DB::table('posts')->whereIn('thread_id',(clone $threads)->select('id'))->count(),'shouts'=>DB::table('shouts')->count()];
+        return self::statsForCategories(self::visibleCategoryIds($user));
+    }
+
+    public static function summary(?User $user): array
+    {
+        $categories = self::categories($user);
+
+        return [
+            'categories' => $categories,
+            'stats' => self::statsForCategories(
+                array_column($categories, 'id'),
+                array_sum(array_column($categories, 'threads_count'))
+            ),
+        ];
+    }
+
+    private static function statsForCategories(array $visibleIds, ?int $threadCount = null): array
+    {
+        $threads = DB::table('threads')->whereIn('category_id', $visibleIds);
+
+        return [
+            'users' => DB::table('users')->where('is_banned', false)->count(),
+            'threads' => $threadCount ?? (clone $threads)->count(),
+            'posts' => DB::table('posts')->whereIn('thread_id', $threads->select('id'))->count(),
+            'shouts' => DB::table('shouts')->count(),
+        ];
     }
 
     public static function audit(string $action,array $details=[],?int $userId=null): void

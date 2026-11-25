@@ -63,6 +63,18 @@ class ForumSecurityTest extends TestCase
         $this->assertStringNotContainsString('Private staff room', $bootstrap->getContent());
         $bootstrap->assertJsonPath('stats.threads', 1)->assertJsonPath('stats.posts', 1);
         $this->assertNoCredentials($bootstrap);
+        $this->getJson('/api/forum-summary')->assertOk()->assertExactJson([
+            'categories' => $bootstrap->json('categories'),
+            'stats' => $bootstrap->json('stats'),
+        ]);
+        $leanBootstrap = $this->getJson('/api/bootstrap?stats=0')->assertOk()->assertJsonMissingPath('stats');
+        $this->assertSame($bootstrap->json('categories'), $leanBootstrap->json('categories'));
+        $pageLocale = $bootstrap->json('i18n.locale');
+        $this->getJson('/api/bootstrap?stats=0&page_locale='.$pageLocale)->assertOk()
+            ->assertJsonMissingPath('stats')->assertJsonMissingPath('i18n');
+        $otherLocale = $pageLocale === 'pl' ? 'en' : 'pl';
+        $this->getJson('/api/bootstrap?stats=0&page_locale='.$pageLocale, ['X-WojteX-Locale' => $otherLocale])->assertOk()
+            ->assertJsonPath('i18n.locale', $otherLocale);
 
         $listing = $this->getJson('/api/threads')->assertOk();
         $ids = array_column($listing->json('data'), 'id');
@@ -166,6 +178,27 @@ class ForumSecurityTest extends TestCase
         $this->assertNotContains($child, $ids);
         $this->getJson('/api/threads?q=Inherited')->assertOk()->assertJsonCount(0, 'data');
         $this->assertDenied($this->getJson('/api/threads/'.$thread));
+    }
+
+    public function test_reply_returns_its_page_when_it_crosses_the_page_boundary(): void
+    {
+        $author = $this->user();
+        $replyingUser = $this->user();
+        $category = $this->category();
+        [$thread] = $this->thread($author, $category);
+        [$anotherThread] = $this->thread($author, $category, 'Another discussion');
+        for ($position = 2; $position <= 39; $position++) {
+            $this->makePost($author, $thread, 'On topic '.$position);
+            $this->makePost($author, $anotherThread, 'In another topic '.$position);
+        }
+
+        $this->actingAs($replyingUser)->postJson('/api/threads/'.$thread.'/posts', ['body' => 'This is post forty.'])
+            ->assertCreated()->assertJsonPath('page', 1);
+        $reply = $this->postJson('/api/threads/'.$thread.'/posts', ['body' => 'This is post forty-one.'])
+            ->assertCreated()->assertJsonPath('page', 2);
+
+        $this->getJson('/api/threads/'.$thread.'?page=2')->assertOk()->assertJsonCount(1, 'posts')
+            ->assertJsonPath('posts.0.id', $reply->json('post.id'));
     }
 
     /** Native Laravel HTTP/PDO qualification, not counted green on incomplete PHP. */
@@ -574,6 +607,19 @@ class ForumSecurityTest extends TestCase
         $this->assertStringNotContainsString('href="javascript:', strtolower($rendered));
         $this->assertStringContainsString('Useful text', $rendered);
         $this->assertDatabaseHas('posts', ['id' => $post, 'body' => $body]);
+    }
+
+    public function test_markdown_references_remain_local_to_each_post(): void
+    {
+        $author = $this->user();
+        [$thread] = $this->thread($author, $this->category(), 'Post references', false,
+            "[First link][doc]\n\n[doc]: https://example.test/only-first");
+        $this->makePost($author, $thread, '[Second link][doc]');
+
+        $posts = $this->getJson('/api/threads/'.$thread)->assertOk()->json('posts');
+        $this->assertStringContainsString('href="https://example.test/only-first"', $posts[0]['body_html']);
+        $this->assertStringContainsString('[Second link][doc]', $posts[1]['body_html']);
+        $this->assertStringNotContainsString('<a ', $posts[1]['body_html']);
     }
 
     public function test_disabled_shoutbox_cannot_be_used_through_api(): void

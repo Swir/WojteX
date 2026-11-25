@@ -104,6 +104,10 @@ function toast(message, error = false) { const div = document.createElement('div
 const state = {bootstrap:null,user:null,csrf:$('meta[name="csrf-token"]')?.content||'',viewToken:0,thread:null,threadPage:1,route:null,sort:'latest',page:1,shouts:[],lastShoutId:0,shoutsInFlight:false,rankings:[],admin:null,adminTab:'settings',adminUserMatches:null,adminUserTerm:'',groupData:null,groupUserMatches:null,groupUserTerm:'',languageData:null,reportData:null,reportStatus:'open',reportPage:1,importFile:null,importReport:null,importPreviewOK:false};
 
 
+let summaryRequest;
+let sidebarStarted = false;
+let sidebarViewerGeneration = 0;
+
 async function request(url, options = {}, retried = false) {
     const init = {method:'GET',credentials:'same-origin',...options};
     init.headers = {Accept:'application/json',...(preferredLocale?{'X-WojteX-Locale':preferredLocale}:{}),...(options.headers||{})};
@@ -115,17 +119,33 @@ async function request(url, options = {}, retried = false) {
     if(!response.ok){const validation=data.errors?Object.values(data.errors).flat().join('\n'):null;const err=new Error(validation||data.message||tr('ui.common.error'));err.status=response.status;throw err;}
     return data;
 }
-async function loadBootstrap() {
+async function loadBootstrap({initial = false} = {}) {
+    summaryRequest?.abort();
+    const previousViewer = state.bootstrap?.user;
+    const query = new URLSearchParams();
+    if (initial) {
+        query.set('stats', '0');
+        if (Object.keys(i18n.messages).length) query.set('page_locale', i18n.locale);
+    }
+    const endpoint = '/api/bootstrap' + (query.size ? '?' + query : '');
     // Password changes can invalidate an existing session while this SPA is open.
     // The middleware clears that session and returns 401; one guest bootstrap
     // retry restores a usable login page rather than a permanent error screen.
-    try { state.bootstrap=await request('/api/bootstrap'); }
+    try { state.bootstrap=await request(endpoint); }
     catch (err) {
         if (err.status!==401) throw err;
         state.user=null;
-        state.bootstrap=await request('/api/bootstrap');
+        state.bootstrap=await request(endpoint);
     }
     acceptI18n(state.bootstrap.i18n);state.user=state.bootstrap.user;state.csrf=state.bootstrap.csrf_token||state.csrf;
+    if (previousViewer?.id !== state.user?.id || previousViewer?.role !== state.user?.role) {
+        ++sidebarViewerGeneration;
+        sidebarStarted = false;
+        state.shouts = [];
+        state.lastShoutId = 0;
+        state.shoutsInFlight = false;
+        state.rankings = [];
+    }
     const settings=state.bootstrap.settings||{};WojtexAppearance.apply(settings);
     document.title=`${settings.site_name||'WojteX Forum'} — by Swir`;$('#version-label').textContent=state.bootstrap.version||'0.1.0-alpha.3-dev.3';
     renderAccount();renderCategoryNav();renderSidebarAdmin();renderAside();
@@ -134,14 +154,73 @@ async function loadBootstrap() {
     paintIcons();
 }
 function renderAccount(){const el=$('#account-control');el.innerHTML=state.user?`<button class="user-menu-button" data-action="account" aria-label="${tx('ui.common.account_label',{name:state.user.name})}">${avatar(state.user,'small')}<span>${e(state.user.name)}</span>${icon('chevron-down')}</button>`:`<button class="button button-small button-ghost" data-action="login">${tx('ui.auth.sign_in')}</button>`;}
-function renderCategoryNav(){const list=state.bootstrap.categories||[];$('#category-nav').innerHTML=list.length?list.map(c=>`<a class="category-link" data-category-nav="${Number(c.id)}" href="#/category/${Number(c.id)}"><span class="category-dot" style="--tone:${tone(c.color)}"></span><span>${e(c.name)}</span><span class="count">${c.is_private?icon('lock'):compact(c.threads_count)}</span></a>`).join(''):`<span class="muted" style="font-size:11px;padding:10px 13px">${tx('ui.nav.no_categories')}</span>`;}
+function renderCategoryNav() {
+    const categories = state.bootstrap.categories || [];
+    const nav = $('#category-nav');
+    const focusedCategory = nav.contains(document.activeElement) ? document.activeElement.dataset.categoryNav : null;
+    nav.innerHTML = categories.length ? categories.map(category => {
+        const current = state.route?.name === 'category' && state.route.id === category.id;
+        return `<a class="category-link ${current ? 'active' : ''}" data-category-nav="${Number(category.id)}" href="#/category/${Number(category.id)}"${current ? ' aria-current="page"' : ''}>
+            <span class="category-dot" style="--tone:${tone(category.color)}"></span><span>${e(category.name)}</span>
+            <span class="count">${category.is_private ? icon('lock') : compact(category.threads_count)}</span>
+        </a>`;
+    }).join('') : `<span class="muted" style="font-size:11px;padding:10px 13px">${tx('ui.nav.no_categories')}</span>`;
+    if (focusedCategory) $(`[data-category-nav="${Number(focusedCategory)}"]`, nav)?.focus({preventScroll: true});
+}
 function renderSidebarAdmin(){$('#sidebar-admin').innerHTML=state.user?.role==='admin'?`<a href="#/admin" class="nav-item" data-nav="admin">${icon('settings')}<span>${tx('ui.nav.admin')}</span></a>`:'';}
-function renderAside(){const stats=state.bootstrap.stats||{};$('#right-column').innerHTML=`${pluginEnabled('shoutbox')?shoutPanel():''}${pluginEnabled('rankings')?`<section class="panel"><div class="panel-header"><h2>${icon('trophy')}${tx('ui.aside.helpful')}</h2><span class="minor-label">${tx('ui.aside.ranking')}</span></div><div id="sidebar-rankings" class="ranking-list"><div class="skeleton skeleton-line"></div></div><a href="#/rankings" class="ranking-footer">${tx('ui.aside.full_ranking')}&nbsp; →</a></section>`:''}<section class="panel stats-panel" aria-label="${tx('ui.aside.stats')}"><div class="stats-item"><strong>${compact(stats.users)}</strong><small>${e(noun(stats.users,'people'))}</small></div><div class="stats-item"><strong>${compact(stats.threads)}</strong><small>${e(noun(stats.threads,'topics'))}</small></div><div class="stats-item"><strong>${compact(stats.posts)}</strong><small>${e(noun(stats.posts,'posts'))}</small></div></section><p class="right-note"><strong>${tx('ui.footer.rules')}</strong><br>WojteX Forum by <span class="credit-name">Swir</span> · ${tx('ui.common.development')}</p>`;paintShouts();renderSidebarRankings();}
+function renderAside(){$('#right-column').innerHTML=`${pluginEnabled('shoutbox')?shoutPanel():''}${pluginEnabled('rankings')?`<section class="panel"><div class="panel-header"><h2>${icon('trophy')}${tx('ui.aside.helpful')}</h2><span class="minor-label">${tx('ui.aside.ranking')}</span></div><div id="sidebar-rankings" class="ranking-list"><div class="skeleton skeleton-line"></div></div><a href="#/rankings" class="ranking-footer">${tx('ui.aside.full_ranking')}&nbsp; →</a></section>`:''}<section id="forum-stats" class="panel stats-panel" aria-label="${tx('ui.aside.stats')}"></section><p class="right-note"><strong>${tx('ui.footer.rules')}</strong><br>WojteX Forum by <span class="credit-name">Swir</span> · ${tx('ui.common.development')}</p>`;renderAsideStats();paintShouts();renderSidebarRankings();}
+function renderAsideStats() {
+    const panel = $('#forum-stats');
+    if (!panel) return;
+    const stats = state.bootstrap.stats;
+    panel.hidden = !stats;
+    if (!stats) return;
+    panel.innerHTML = `<div class="stats-item"><strong>${compact(stats.users)}</strong><small>${e(noun(stats.users,'people'))}</small></div><div class="stats-item"><strong>${compact(stats.threads)}</strong><small>${e(noun(stats.threads,'topics'))}</small></div><div class="stats-item"><strong>${compact(stats.posts)}</strong><small>${e(noun(stats.posts,'posts'))}</small></div>`;
+}
 function shoutPanel(large=false){return `<section class="panel ${large?'shout-panel-full':''}" id="${large?'main-':'side-'}shout-panel"><div class="panel-header"><h2>${icon('chat')}${tx('ui.shout.title')}</h2><span class="minor-label" title="${tx('ui.shout.refresh_title')}"><span class="status-dot"></span>${tx('ui.shout.chat')}</span></div><div class="shout-list" data-shout-list ${large?'style="max-height:570px;min-height:350px"':''} role="log" aria-label="${tx('ui.shout.messages_label')}">${state.shouts.length?'':`<div class="loading-label">${tx('ui.shout.loading')}</div>`}</div>${state.user?`<form class="shout-form" data-form="shout"><div class="shout-input-wrap"><input name="body" placeholder="${tx('ui.shout.placeholder')}" maxlength="1000" required autocomplete="off" aria-label="${tx('ui.shout.message_label')}"><button class="shout-send" type="submit" aria-label="${tx('ui.shout.send')}">${icon('send')}</button></div><div class="shout-hint"><span>${tx('ui.shout.enter')}</span><span>${tx('ui.shout.refresh')}</span></div></form>`:`<div class="shout-login"><p>${tx('ui.shout.join')}</p><button class="button button-small button-secondary" data-action="login">${tx('ui.shout.sign_in')}</button></div>`}</section>`;}
 function shoutRow(s){return `<article class="shout-message" data-shout-id="${Number(s.id)}">${avatar(s.author,'small')}<div class="shout-main"><div class="shout-meta"><strong>${e(s.author?.name||tr('ui.user.fallback'))}</strong><time title="${e(dateTitle(s.created_at))}">${e(relative(s.created_at))}</time></div><p>${e(s.body)}</p>${state.user&&(state.user.id===s.author?.id||isMod())?`<button class="shout-delete" data-action="delete-shout" data-id="${Number(s.id)}">${tx('ui.common.delete')}</button>`:''}</div></article>`;}
 function paintShouts(){ $$('[data-shout-list]').forEach(list=>{const nearBottom=list.scrollHeight-list.scrollTop-list.clientHeight<70;list.innerHTML=state.shouts.length?state.shouts.map(shoutRow).join(''):'<div class="empty-state compact"><div class="empty-icon">'+icon('chat')+`</div><h3>${tx('ui.shout.start')}</h3><p>${tx('ui.shout.first_message')}</p></div>`;if(nearBottom||!list.dataset.loaded){list.scrollTop=list.scrollHeight;list.dataset.loaded='true';}});}
-async function refreshShouts(reset=false){if(!pluginEnabled('shoutbox')||state.shoutsInFlight)return;state.shoutsInFlight=true;try{const r=await request('/api/shouts'+(!reset&&state.lastShoutId?'?after='+state.lastShoutId:''));if(r.enabled===false)return;const incoming=r.data||[];if(reset){state.shouts=incoming;}else{const seen=new Set(state.shouts.map(s=>s.id));state.shouts.push(...incoming.filter(s=>!seen.has(s.id)));}state.shouts=state.shouts.slice(-100);state.lastShoutId=Math.max(0,...state.shouts.map(s=>Number(s.id)));if(reset||incoming.length||!state.shouts.length)paintShouts();}catch(err){if(reset)$$('[data-shout-list]').forEach(el=>el.innerHTML=`<div class="empty-state compact"><p>${e(err.message)}</p><button class="text-button" data-action="refresh-shouts">${tx('ui.common.retry')}</button></div>`);}finally{state.shoutsInFlight=false;}}
-async function refreshRankings(){if(!pluginEnabled('rankings'))return;try{const r=await request('/api/rankings');state.rankings=r.data||[];renderSidebarRankings();}catch(_){const el=$('#sidebar-rankings');if(el)el.innerHTML=`<p class="right-note">${tx('ui.rankings.unavailable')}</p>`;}}
+async function refreshShouts(reset = false) {
+    if (!pluginEnabled('shoutbox') || state.shoutsInFlight) return;
+    const viewer = sidebarViewerGeneration;
+    state.shoutsInFlight = true;
+    try {
+        const after = !reset && state.lastShoutId ? '?after=' + state.lastShoutId : '';
+        const result = await request('/api/shouts' + after);
+        if (viewer !== sidebarViewerGeneration || result.enabled === false) return;
+        const incoming = result.data || [];
+        if (reset) state.shouts = incoming;
+        else {
+            const seen = new Set(state.shouts.map(shout => shout.id));
+            state.shouts.push(...incoming.filter(shout => !seen.has(shout.id)));
+        }
+        state.shouts = state.shouts.slice(-100);
+        state.lastShoutId = Math.max(0, ...state.shouts.map(shout => Number(shout.id)));
+        if (reset || incoming.length || !state.shouts.length) paintShouts();
+    } catch (err) {
+        if (viewer === sidebarViewerGeneration && reset) {
+            $$('[data-shout-list]').forEach(list => {
+                list.innerHTML = `<div class="empty-state compact"><p>${e(err.message)}</p><button class="text-button" data-action="refresh-shouts">${tx('ui.common.retry')}</button></div>`;
+            });
+        }
+    } finally {
+        if (viewer === sidebarViewerGeneration) state.shoutsInFlight = false;
+    }
+}
+
+async function refreshRankings() {
+    if (!pluginEnabled('rankings')) return;
+    const viewer = sidebarViewerGeneration;
+    try {
+        const result = await request('/api/rankings');
+        if (viewer !== sidebarViewerGeneration) return;
+        state.rankings = result.data || [];
+        renderSidebarRankings();
+    } catch (_) {
+        const ranking = $('#sidebar-rankings');
+        if (viewer === sidebarViewerGeneration && ranking) ranking.innerHTML = `<p class="right-note">${tx('ui.rankings.unavailable')}</p>`;
+    }
+}
 function renderSidebarRankings(){const el=$('#sidebar-rankings');if(!el)return;el.innerHTML=state.rankings.length?state.rankings.slice(0,5).map((u,i)=>`<div class="ranking-row"><span class="rank-position ${i===0?'first':''}">${String(i+1).padStart(2,'0')}</span>${avatar(u,'small')}<div class="ranking-info"><strong>${e(u.name)}</strong><small>${e(u.badge||tr('ui.rankings.member'))}</small></div><div class="ranking-score">${count(u.score)}<small>${e(noun(u.score,'points').toUpperCase())}</small></div></div>`).join(''):`<div class="empty-state compact"><p>${tx('ui.rankings.empty_sidebar')}</p></div>`;}
 
 function routeInfo(){const h=location.hash.replace(/^#\/?/,'');const [path,qs]=h.split('?');const parts=(path||'').split('/');return {name:parts[0]||'home',id:Number(parts[1])||null,query:new URLSearchParams(qs||'')};}
@@ -169,7 +248,7 @@ async function navigate(){if(!state.bootstrap)return;const token=++state.viewTok
     else if(route.name==='profile'){renderProfile();}
     else if(route.name==='admin'){await renderAdmin(token);}
     else {setHeader(tr('ui.page.not_found_title'),tr('ui.page.not_found_subtitle'));view.innerHTML=`<div class="panel">${empty(tr('ui.page.space_missing'),tr('ui.page.space_missing_help'),'search',`<a class="button button-primary" href="#/">${tx('ui.page.back_to_forum')}</a>`)}</div>`;}
-}catch(err){if(token!==state.viewToken)return;view.innerHTML=`<div class="panel">${empty(err.status===404?tr('ui.page.content_missing'):err.status===403?tr('ui.page.private'):tr('ui.page.load_failed'),err.message,err.status===403?'lock':'alert',`<button class="button button-secondary" data-action="retry-view">${tx('ui.common.retry')}</button>`)}</div>`;}finally{if(token===state.viewToken){view.setAttribute('aria-busy','false');paintIcons(view);}}}
+}catch(err){if(token!==state.viewToken)return;view.innerHTML=`<div class="panel">${empty(err.status===404?tr('ui.page.content_missing'):err.status===403?tr('ui.page.private'):tr('ui.page.load_failed'),err.message,err.status===403?'lock':'alert',`<button class="button button-secondary" data-action="retry-view">${tx('ui.common.retry')}</button>`)}</div>`;}finally{if(token===state.viewToken){view.setAttribute('aria-busy','false');paintIcons(view);startVisibleSidebar();}}}
 function welcomePanel() {
     if (!pluginEnabled('welcome')) return '';
     const settings = state.bootstrap.settings || {};
@@ -313,6 +392,13 @@ async function renderThread(id,token){
         </section>
         <div class="posts-list">${(r.posts||[]).map((p,i)=>postCard(p,(r.page-1)*40+i+1)).join('')}</div>
         ${pagination(r.page||1,r.last_page||1,r.total_posts||r.posts?.length||0,'posts')}${replyForm(t)}`;
+
+    const target = document.getElementById('post-' + Number(state.route.query.get('post')));
+    if (target) {
+        target.tabIndex = -1;
+        target.focus({preventScroll: true});
+        target.scrollIntoView({block: 'start'});
+    }
 }
 
 function postCard(p,number){const canEdit=state.user&&(state.user.id===p.author?.id||isMod())&&(!state.thread?.thread?.is_locked||isMod())&&(state.thread?.can_reply!==false||isMod());return `<article class="panel post-card" id="post-${Number(p.id)}"><div class="post-top">${avatar(p.author)}<div class="post-author"><strong>${e(p.author?.name||tr('ui.user.fallback'))}</strong>${role(p.author)}<small><time title="${e(dateTitle(p.created_at))}">${e(relative(p.created_at))}</time>${e(p.updated_at&&p.updated_at!==p.created_at?tr('ui.common.edited_suffix'):'')}</small></div><span class="post-number">#${number}</span></div><div class="post-body">${p.body_html||e(p.body).replace(/\n/g,'<br>')}</div>${p.attachments?.length?`<div class="attachments">${p.attachments.map(a=>`<a class="attachment" href="/attachments/${Number(a.id)}" target="_blank" rel="noopener noreferrer">${icon('paperclip')}${e(a.name||a.original_name||tr('ui.post.attachment'))}${a.size?`<span class="muted">(${formatBytes(a.size)})</span>`:''}</a>`).join('')}</div>`:''}<div class="post-actions"><div class="post-actions-group"><button class="reaction-button ${p.reacted?'active':''}" data-action="react" data-id="${Number(p.id)}" aria-pressed="${!!p.reacted}" ${state.thread?.can_reply===false?'disabled':state.user?.id===p.author?.id?`disabled title="${tx('ui.post.own_reaction')}"`:''}>${icon('heart')}<span>${count(p.reactions_count)}</span></button>${state.thread?.can_reply===false?'':`<button class="subtle-button" data-action="quote" data-id="${Number(p.id)}">${tx('ui.post.quote')}</button>`}</div>${canEdit?`<div class="post-actions-group"><button class="subtle-button" data-action="edit-post" data-id="${Number(p.id)}">${tx('ui.common.edit')}</button><button class="subtle-button" data-action="attach-post" data-id="${Number(p.id)}">${tx('ui.post.add_file')}</button>${number!==1?`<button class="subtle-button" data-action="delete-post" data-id="${Number(p.id)}">${tx('ui.common.delete')}</button>`:''}</div>`:''}</div></article>`;}
@@ -641,7 +727,7 @@ case 'logout':await request('/api/auth/logout',{method:'POST'});closeDialog();st
 case 'new-topic':newTopicModal();break;
 case 'quick-search':openQuickSearch();break;
 case 'sort':updateRouteQuery({sort:button.dataset.sort,page:null});break;
-case 'page':updateRouteQuery({page:button.dataset.page});window.scrollTo({top:0,behavior:'smooth'});break;
+case 'page':updateRouteQuery({page:button.dataset.page,post:null});window.scrollTo({top:0,behavior:'smooth'});break;
 case 'message-find':{
     const form=button.closest('[data-form="private-message"]');
     if(!form)break;
@@ -715,7 +801,17 @@ case 'private-message-report':await request(`/api/messages/${Number(form.dataset
 case 'private-message':{const result=await request('/api/messages',{method:'POST',body:{recipient_id:Number(values.recipient_id),body:values.body}});form.reset();await navigate();toast(result.message||tr('ui.messages.sent_notice'));}break;
 case 'shout':{if(!values.body?.trim())return;const r=await request('/api/shouts',{method:'POST',body:{body:values.body.trim()}});$('input[name=body]',form).value='';if(r.shout&&!state.shouts.some(s=>s.id===r.shout.id)){state.shouts.push(r.shout);state.lastShoutId=Math.max(state.lastShoutId,Number(r.shout.id));state.shouts=state.shouts.slice(-100);paintShouts();}else await refreshShouts();$$('[data-shout-list]').forEach(el=>el.scrollTop=el.scrollHeight);}break;
 case 'new-topic':{const file=$('input[name=attachment]',form)?.files[0];const r=await request('/api/threads',{method:'POST',body:{title:values.title,category_id:Number(values.category_id),body:values.body}});closeDialog();const threadId=r.thread.id;location.hash='/thread/'+threadId;window.scrollTo({top:0,behavior:'instant'});toast(tr('ui.topic.published'));if(file){try{const detail=await request(`/api/threads/${threadId}`);const first=detail.posts?.[0];if(!first)throw new Error(tr('ui.topic.first_post_missing'));const fd=new FormData();fd.append('file',file);await request(`/api/posts/${first.id}/attachments`,{method:'POST',body:fd});if(state.route?.name==='thread'&&state.route.id===threadId)await navigate();toast(tr('ui.attachment.added'));}catch(err){toast(tr('ui.topic.attachment_failed',{message:err.message}),true);}}await updateStats();}break;
-case 'reply':{await request(`/api/threads/${Number(form.dataset.thread)}/posts`,{method:'POST',body:{body:values.body}});const id=Number(form.dataset.thread);const detail=await request(`/api/threads/${id}`);if((detail.last_page||1)!==state.threadPage){updateRouteQuery({page:detail.last_page||1});}else await navigate();toast(tr('ui.post.published'));await updateStats();await refreshRankings();}break;
+case 'reply': {
+    const id = Number(form.dataset.thread);
+    const result = await request(`/api/threads/${id}/posts`, {method: 'POST', body: {body: values.body}});
+    const route = routeInfo();
+    if (route.name === 'thread' && route.id === id) {
+        updateRouteQuery({page: result.page ?? state.threadPage, post: result.post.id});
+    }
+    toast(tr('ui.post.published'));
+    await updateStats();
+    await refreshRankings();
+} break;
 case 'edit-post':await request(`/api/posts/${Number(form.dataset.id)}`,{method:'PATCH',body:{body:values.body}});closeDialog();await navigate();toast(tr('ui.post.saved'));break;
 case 'attachment':{const fd=new FormData();fd.append('file',$('input[name=file]',form).files[0]);await request(`/api/posts/${Number(form.dataset.id)}/attachments`,{method:'POST',body:fd});closeDialog();await navigate();toast(tr('ui.attachment.added'));}break;
 case 'profile':await request('/api/profile',{method:'PATCH',body:{name:values.name,bio:values.bio,allow_private_messages:!!$('input[name=allow_private_messages]',form)?.checked}});await loadBootstrap();renderProfile();toast(tr('ui.profile.saved'));break;
@@ -733,7 +829,24 @@ case 'import':{const file=$('input[name=file]',form).files[0]||state.importFile;
 case 'import-execute':{if(!state.importFile||!state.importPreviewOK)throw new Error(tr('ui.import.analyze_first'));if(!$('input[name=confirm_private]',form).checked)throw new Error(tr('ui.import.confirm_required'));const fd=new FormData();fd.append('file',state.importFile);fd.append('confirm_private','1');state.importReport=await request('/api/admin/imports/mybb',{method:'POST',body:fd});state.importPreviewOK=false;await loadBootstrap();await refreshAdmin();toast(tr('ui.import.finished'));}break;
 case 'confirm':if(state.confirmAction)await state.confirmAction();break;
 }}
-async function updateStats(){try{const boot=await request('/api/bootstrap');state.bootstrap.stats=boot.stats;state.bootstrap.categories=boot.categories;renderCategoryNav();renderAside();}catch(_){}}
+async function updateStats() {
+    summaryRequest?.abort();
+    const controller = new AbortController();
+    const bootstrap = state.bootstrap;
+    summaryRequest = controller;
+    try {
+        const summary = await request('/api/forum-summary', {signal: controller.signal});
+        if (controller.signal.aborted || state.bootstrap !== bootstrap) return;
+        state.bootstrap.stats = summary.stats;
+        state.bootstrap.categories = summary.categories;
+        renderCategoryNav();
+        renderAsideStats();
+    } catch (_) {
+        // Posting succeeded independently of the counters. A later refresh can retry.
+    } finally {
+        if (summaryRequest === controller) summaryRequest = null;
+    }
+}
 document.addEventListener('submit',async event=>{const form=event.target;if(!form.dataset.form)return;event.preventDefault();if(form.dataset.busy==='1')return;form.dataset.busy='1';const error=$('.form-error',form);if(error)error.textContent='';const buttons=$$('button[type=submit]',form);buttons.forEach(b=>{b.disabled=true;b.setAttribute('aria-busy','true');});try{await submitForm(form);}catch(err){if(error&&error.isConnected)error.textContent=err.message;else toast(err.message,true);}finally{form.dataset.busy='0';buttons.forEach(b=>{b.disabled=false;b.removeAttribute('aria-busy');});}});
 document.addEventListener('input',event=>{if(event.target.matches('[data-form="private-message"] [name="recipient_query"]')){const form=event.target.closest('form');const selection=$('[name="recipient_id"]',form);if(selection)selection.innerHTML=`<option value="">${tx('ui.messages.recipient_choose')}</option>`;const status=$('[data-recipient-status]',form);if(status)status.textContent='';}});
 document.addEventListener('change',event=>{if(event.target.id==='locale-picker'){changeLocale(event.target);return;}if(event.target.matches('[data-form="import"] input[name=file]')){state.importPreviewOK=false;state.importFile=event.target.files[0]||null;state.importReport=null;const result=$('#import-result');if(result)result.innerHTML='';}});
@@ -756,9 +869,31 @@ $('.skip-link').addEventListener('click', event => {
     $('#main-content').focus();
 });
 window.addEventListener('hashchange',()=>navigate());
-setInterval(()=>{if(document.visibilityState==='visible'&&state.bootstrap&&pluginEnabled('shoutbox')){const visible=$$('[data-shout-list]').some(el=>el.getClientRects().length>0);if(visible)refreshShouts();}},5000);
-document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&state.bootstrap)refreshShouts(true);});
-async function init(){paintIcons();try{await loadBootstrap();await Promise.allSettled([navigate(),refreshShouts(true),refreshRankings()]);}catch(err){$('#view').setAttribute('aria-busy','false');$('#view').innerHTML=`<div class="panel">${empty(tr('ui.page.connect_failed'),err.message,'alert',`<button class="button button-primary" data-action="retry-bootstrap">${tx('ui.common.retry')}</button>`)}</div>`;$('#right-column').innerHTML='';}}
+function hasVisibleShoutbox() {
+    return $$('[data-shout-list]').some(list => list.getClientRects().length > 0);
+}
+
+function startVisibleSidebar() {
+    if (document.visibilityState !== 'visible' || !state.bootstrap || !state.route
+        || state.route.name === 'thread' || !$('#right-column').getClientRects().length) return;
+    if (!state.bootstrap.stats && !summaryRequest) void updateStats();
+    if (sidebarStarted) return;
+    sidebarStarted = true;
+    if (state.route.name !== 'chat') void refreshShouts(true);
+    if (state.route.name !== 'rankings') void refreshRankings();
+}
+
+setInterval(() => {
+    if (document.visibilityState === 'visible' && hasVisibleShoutbox()) void refreshShouts();
+}, 5000);
+window.addEventListener('resize', startVisibleSidebar);
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible' || !state.bootstrap) return;
+    const alreadyStarted = sidebarStarted;
+    startVisibleSidebar();
+    if ((alreadyStarted || state.route?.name === 'chat') && hasVisibleShoutbox()) void refreshShouts(true);
+});
+async function init(){paintIcons();try{await loadBootstrap({initial:true});await navigate();}catch(err){$('#view').setAttribute('aria-busy','false');$('#view').innerHTML=`<div class="panel">${empty(tr('ui.page.connect_failed'),err.message,'alert',`<button class="button button-primary" data-action="retry-bootstrap">${tx('ui.common.retry')}</button>`)}</div>`;$('#right-column').innerHTML='';}}
 init();
 
 // Appearance changes preview immediately and persist only in this browser.

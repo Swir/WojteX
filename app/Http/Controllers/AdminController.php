@@ -15,7 +15,7 @@ use Illuminate\Validation\Rule;
 class AdminController extends Controller
 {
     public function show(Request $request) {
-        return response()->json(['settings'=>Forum::settings(),'stats'=>Forum::stats($request->user()),'plugins'=>ExtensionRegistry::catalog(),'categories'=>Forum::categories($request->user()),'users'=>User::orderByDesc('id')->limit(100)->get()->map(fn($u)=>Forum::publicUser($u)+['email'=>$u->email,'is_banned'=>(bool)$u->is_banned]),'recent_actions'=>DB::table('audit_logs')->orderByDesc('id')->limit(25)->get()->map(fn($a)=>['id'=>$a->id,'action'=>$a->action,'details'=>json_decode($a->details,true),'created_at'=>$a->created_at])]);
+        return response()->json(['settings'=>Forum::settings(),...Forum::summary($request->user()),'plugins'=>ExtensionRegistry::catalog(),'users'=>User::orderByDesc('id')->limit(100)->get()->map(fn($u)=>Forum::publicUser($u)+['email'=>$u->email,'is_banned'=>(bool)$u->is_banned]),'recent_actions'=>DB::table('audit_logs')->orderByDesc('id')->limit(25)->get()->map(fn($a)=>['id'=>$a->id,'action'=>$a->action,'details'=>json_decode($a->details,true),'created_at'=>$a->created_at])]);
     }
     /** Moderators cannot use this: e-mail lookup is restricted by /api/admin middleware. */
     public function searchUsers(Request $request) {

@@ -6,7 +6,7 @@ Beta.1 is the first public WojteX release. Test upgrades on an isolated copy bef
 2. Extract the new package into a separate private directory. Use a separate database and disable outgoing mail in this copy.
 3. Preserve the original `APP_KEY` and installation lock when restoring an existing installation. Do not generate a new key, rerun the installer or use database reset commands.
 4. Apply application files and bundled dependencies, keeping your own assets/extensions separately. For hosting layouts with a separate public directory, also update the public files and verify the entry-point path.
-5. Run `php artisan migrate --force` and `php artisan optimize:clear` only against the isolated target copy. The appearance changes from dev.55 introduce no database migrations; older prototypes may require migrations already in this release.
+5. Run `php artisan migrate --force` and `php artisan optimize:clear` only against the isolated target copy. The appearance changes from dev.55 introduce no database migrations. The latest-discussions index is added by a migration. Allow time to build it when testing with a large copy of the database.
 6. Check login, permissions, topics, messages, uploads, languages and appearance. Confirm the previous backup can still be restored.
 
 Technical identifiers such as `config/veyra.php`, the legacy session cookie and older class names remain for compatibility. Do not rename them manually. Existing `.env` values and forum names are not automatically overwritten by the public package.

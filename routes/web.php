@@ -10,6 +10,7 @@ Route::middleware('installed')->group(function(){
     Route::get('/attachments/{id}',[AttachmentController::class,'download'])->whereNumber('id')->middleware('fresh_forum_reader');
     Route::prefix('api')->group(function(){
         Route::get('/bootstrap',[ForumController::class,'bootstrap'])->middleware('fresh_forum_reader');
+        Route::get('/forum-summary',[ForumController::class,'summary'])->middleware('fresh_forum_reader');
         Route::post('/locale',[LanguageController::class,'choose']);
         Route::get('/threads',[ForumController::class,'threads'])->middleware('fresh_forum_reader');
         Route::get('/threads/quick-search',[ForumController::class,'quickSearch'])->middleware(['fresh_forum_reader', 'throttle:60,1,thread-quick-search']);

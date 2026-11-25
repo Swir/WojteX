@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Added an index for the latest discussion feed and reused Markdown rendering setup within a topic page.
+- After posting a reply, open the page containing it directly. Posting refreshes category counters through a smaller response and leaves the shoutbox input intact.
+- The discussion list can load before sidebar statistics and activity. Automatic sidebar loads run when the sidebar is visible. Startup reuses the translations already in the page when the requested language matches.
 - Updated home page and category cards, with a directory for all visible categories and direct access to subcategories from their parent.
 - Quick search from the header, `/` or `Ctrl/⌘+K`. Jump to categories, preview matching topic titles, or search titles and post contents together. Suggestions use live forum permissions and work in Polish and English.
 - Updated Laravel to 13.44.1 and the affected Symfony components to 7.4.24 to address the advisories reported by Composer audit.

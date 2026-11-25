@@ -191,6 +191,8 @@
 :root[data-density=compact] .wx-category-card { gap: 9px; padding-block: 12px; }
 .wx-home .topic-title { font-size: 16px; }
 .wx-home .topic-meta { font-size: 12px; }
+.wx-thread-page .post-card:focus { outline: 2px solid var(--accent); outline-offset: 2px; scroll-margin-top: 16px; }
+#forum-stats[hidden] { display: none; }
 
 .app-dialog.wx-search-dialog { width: 620px; max-height: min(82dvh, 760px); overflow: hidden; }
 .wx-search-dialog[open] { display: flex; flex-direction: column; }

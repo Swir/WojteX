@@ -63,6 +63,8 @@ class ForumReadLiveAuthorizationTest extends TestCase
         $this->getJson('/api/threads/'.$threadId)->assertOk();
         $this->getJson('/api/threads/quick-search?q=Classified')->assertOk()
             ->assertJsonPath('data.0.title', 'Classified plans');
+        $this->getJson('/api/forum-summary')->assertOk()
+            ->assertJsonPath('stats.threads', 1)->assertJsonPath('stats.posts', 1);
 
         // Deliberately retain an old authenticated Eloquent object saying
         // "moderator" while the authoritative database now says "member".
@@ -75,6 +77,8 @@ class ForumReadLiveAuthorizationTest extends TestCase
             ->assertJsonCount(0, 'data')->assertDontSee('Classified plans');
         $this->getJson('/api/bootstrap')->assertOk()
             ->assertJsonCount(0, 'categories')->assertDontSee('Secret department');
+        $this->getJson('/api/forum-summary')->assertOk()->assertJsonCount(0, 'categories')
+            ->assertJsonPath('stats.threads', 0)->assertJsonPath('stats.posts', 0);
         $this->get('/attachments/'.$attachmentId)->assertNotFound();
     }
 
