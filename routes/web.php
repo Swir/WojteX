@@ -12,6 +12,7 @@ Route::middleware('installed')->group(function(){
         Route::get('/bootstrap',[ForumController::class,'bootstrap'])->middleware('fresh_forum_reader');
         Route::post('/locale',[LanguageController::class,'choose']);
         Route::get('/threads',[ForumController::class,'threads'])->middleware('fresh_forum_reader');
+        Route::get('/threads/quick-search',[ForumController::class,'quickSearch'])->middleware(['fresh_forum_reader', 'throttle:60,1,thread-quick-search']);
         Route::get('/threads/{id}',[ForumController::class,'show'])->whereNumber('id')->middleware('fresh_forum_reader');
         Route::get('/shouts',[CommunityController::class,'shouts']);
         Route::get('/rankings',[CommunityController::class,'rankings'])->middleware('fresh_forum_reader');

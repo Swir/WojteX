@@ -21,10 +21,7 @@ final class ThreadSearchQuery
 
     public static function apply(Builder $threads, string $term): Builder
     {
-        // Keep '%' and '_' as actual text; otherwise an innocent search for
-        // "100%" unexpectedly enumerates *all* visible threads.
-        // Escape '!' first, in a single pass, so a literal escape marker works.
-        $pattern = '%'.strtr(trim($term), ['!' => '!!', '%' => '!%', '_' => '!_']).'%';
+        $pattern = self::containsPattern($term);
 
         return $threads->where(static fn (Builder $query) => $query
             ->whereRaw("t.title LIKE ? ESCAPE '!'", [$pattern])
@@ -34,5 +31,18 @@ final class ThreadSearchQuery
                 ->whereRaw("posts.body LIKE ? ESCAPE '!'", [$pattern])
             )
         );
+    }
+
+    public static function applyTitle(Builder $threads, string $term): Builder
+    {
+        return $threads->whereRaw("t.title LIKE ? ESCAPE '!'", [self::containsPattern($term)]);
+    }
+
+    private static function containsPattern(string $term): string
+    {
+        // Keep '%' and '_' as actual text; otherwise an innocent search for
+        // "100%" unexpectedly enumerates *all* visible threads.
+        // Escape '!' first, in a single pass, so a literal escape marker works.
+        return '%'.strtr(trim($term), ['!' => '!!', '%' => '!%', '_' => '!_']).'%';
     }
 }

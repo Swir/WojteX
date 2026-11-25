@@ -146,9 +146,20 @@ function renderSidebarRankings(){const el=$('#sidebar-rankings');if(!el)return;e
 
 function routeInfo(){const h=location.hash.replace(/^#\/?/,'');const [path,qs]=h.split('?');const parts=(path||'').split('/');return {name:parts[0]||'home',id:Number(parts[1])||null,query:new URLSearchParams(qs||'')};}
 function setHeader(title,subtitle,eyebrow=tr('ui.nav.community')){ $('#page-title').innerHTML=title.endsWith('.')?e(title.slice(0,-1))+'<span>.</span>':e(title);$('#page-subtitle').textContent=subtitle;$('#page-eyebrow').textContent=eyebrow;$('#topbar-label').textContent=title; }
-function updateNav(route){$$('[data-nav]').forEach(el=>el.classList.toggle('active',el.dataset.nav===route.name||(route.name==='category'&&el.dataset.nav==='home')));$$('[data-category-nav]').forEach(el=>el.classList.toggle('active',route.name==='category'&&Number(el.dataset.categoryNav)===route.id));closeSidebar();}
-async function navigate(){if(!state.bootstrap)return;const token=++state.viewToken;const route=routeInfo();state.route=route;state.thread=null;state.page=Number(route.query.get('page'))||1;state.threadPage=Number(route.query.get('page'))||1;state.sort=route.query.get('sort')||'latest';updateNav(route);$('#main-content').classList.remove('wx-thread-page');const view=$('#view');view.setAttribute('aria-busy','true');view.innerHTML=loading();$('#global-search').value=route.name==='search'?(route.query.get('q')||''):'';$('#workspace-grid').classList.toggle('chat-view',route.name==='chat');try{
+function updateNav(route) {
+    $$('[data-nav], [data-category-nav]').forEach(link => {
+        const current = link.dataset.categoryNav
+            ? route.name === 'category' && Number(link.dataset.categoryNav) === route.id
+            : link.dataset.nav === route.name;
+        link.classList.toggle('active', current);
+        if (current) link.setAttribute('aria-current', 'page');
+        else link.removeAttribute('aria-current');
+    });
+    closeSidebar();
+}
+async function navigate(){if(!state.bootstrap)return;const token=++state.viewToken;const route=routeInfo();state.route=route;state.thread=null;state.page=Number(route.query.get('page'))||1;state.threadPage=Number(route.query.get('page'))||1;state.sort=route.query.get('sort')||'latest';updateNav(route);$('#main-content').classList.remove('wx-thread-page');$('#main-content').classList.toggle('wx-home',route.name==='home');const view=$('#view');view.setAttribute('aria-busy','true');view.innerHTML=loading();if(quickSearchDialog.open)quickSearchDialog.close();$('#workspace-grid').classList.toggle('chat-view',route.name==='chat');try{
     if(['home','latest','category','search','saved'].includes(route.name)){await renderFeed(route,token);}
+    else if(route.name==='categories'){renderDirectory();}
     else if(route.name==='thread'&&route.id){await renderThread(route.id,token);}
     else if(route.name==='rankings'){await renderRankings(token);}
     else if(route.name==='messages'){await renderPrivateMessages(token);}
@@ -159,11 +170,117 @@ async function navigate(){if(!state.bootstrap)return;const token=++state.viewTok
     else if(route.name==='admin'){await renderAdmin(token);}
     else {setHeader(tr('ui.page.not_found_title'),tr('ui.page.not_found_subtitle'));view.innerHTML=`<div class="panel">${empty(tr('ui.page.space_missing'),tr('ui.page.space_missing_help'),'search',`<a class="button button-primary" href="#/">${tx('ui.page.back_to_forum')}</a>`)}</div>`;}
 }catch(err){if(token!==state.viewToken)return;view.innerHTML=`<div class="panel">${empty(err.status===404?tr('ui.page.content_missing'):err.status===403?tr('ui.page.private'):tr('ui.page.load_failed'),err.message,err.status===403?'lock':'alert',`<button class="button button-secondary" data-action="retry-view">${tx('ui.common.retry')}</button>`)}</div>`;}finally{if(token===state.viewToken){view.setAttribute('aria-busy','false');paintIcons(view);}}}
-function welcomePanel(){if(!pluginEnabled('welcome'))return '';const s=state.bootstrap.settings||{};return `<section class="welcome-panel"><div class="welcome-copy"><div class="welcome-tag">${icon('spark')}${tx('ui.welcome.tag')}</div><h2>${e(s.welcome_title||tr('ui.footer.slogan'))}</h2><p>${e(s.welcome_text||tr('ui.welcome.default_text'))}</p><div class="welcome-actions"><button class="button" data-action="${state.user?'new-topic':'register'}">${e(state.user?tr('ui.welcome.start'):tr('ui.welcome.join'))}${icon('arrow-right')}</button><button class="text-button" data-action="scroll-discussions">${tx('ui.welcome.discover')}${icon('chevron-right')}</button></div></div><div class="welcome-art" aria-hidden="true"><span class="art-bracket">{ }</span><div class="code-card"><div class="code-titlebar"><i></i><i></i><i></i><small>community.ts</small></div><div class="code-body"><span class="code-muted">${tx('ui.welcome.art_comment')}</span><br>community.<b>connect</b>({<br>&nbsp; ideas: <em>'unlimited'</em>,<br>&nbsp; together: <b>true</b><br>});</div></div><div class="art-chip">${icon('check-circle')}${tx('ui.welcome.art_chip')}</div></div></section>`;}
-function spaceCards(){const list=(state.bootstrap.categories||[]).filter(c=>!c.parent_id).slice(0,3);return list.length?`<section aria-label="${tx('ui.spaces.label')}"><div class="section-heading"><h2>${tx('ui.spaces.title')}</h2><small>${tx('ui.spaces.available',{count:counted(state.bootstrap.categories.length,'categories')})}</small></div><div class="spaces-grid">${list.map(c=>`<a href="#/category/${Number(c.id)}" class="space-card" style="--tone:${tone(c.color)}"><div class="space-icon">${icon(c.icon||'code')}</div><span class="card-arrow">${icon('arrow-up-right')}</span><h3>${e(c.name)}</h3><p>${e(counted(c.threads_count,'topics'))}${e(c.is_private?tr('ui.common.private_suffix'):'')}</p></a>`).join('')}</div></section>`:'';}
+function welcomePanel() {
+    if (!pluginEnabled('welcome')) return '';
+    const settings = state.bootstrap.settings || {};
+    const action = state.user ? 'new-topic' : settings.registration_open ? 'register' : 'login';
+    const actionLabel = state.user ? tr('ui.welcome.start')
+        : settings.registration_open ? tr('ui.welcome.join') : tr('ui.auth.sign_in');
+    return `<section class="wx-welcome" aria-labelledby="welcome-title">
+        <div class="wx-welcome-copy">
+            <h2 id="welcome-title">${e(settings.welcome_title || tr('ui.footer.slogan'))}</h2>
+            <p>${e(settings.welcome_text || tr('ui.welcome.default_text'))}</p>
+            <div class="wx-welcome-actions">
+                <button type="button" class="button button-primary" data-action="${action}">${e(actionLabel)}${icon('arrow-right')}</button>
+                <button type="button" class="button button-ghost" data-action="quick-search">${icon('search')}${tx('ui.quick_search.open')}</button>
+            </div>
+        </div>
+    </section>`;
+}
+
+function categoryCards(categories, allCategories) {
+    const categoriesById = new Map(allCategories.map(category => [category.id, category]));
+    return `<div class="wx-category-grid">${categories.map(category => {
+        const parent = categoriesById.get(category.parent_id);
+        return `<a href="#/category/${Number(category.id)}" class="wx-category-card" style="--tone:${tone(category.color)}">
+            <span class="space-icon">${icon(category.icon || 'layers')}</span>
+            ${icon('arrow-up-right', 'wx-category-arrow')}
+            <div class="wx-category-copy">
+                ${parent ? `<small>${e(parent.name)}</small>` : ''}
+                <h3>${e(category.name)}</h3>
+                ${category.description ? `<p>${e(category.description)}</p>` : ''}
+                <span class="wx-category-meta">${e(counted(category.threads_count, 'topics'))}${category.is_private ? e(tr('ui.common.private_suffix')) : ''}</span>
+            </div>
+        </a>`;
+    }).join('')}</div>`;
+}
+
+function feedCategories(route) {
+    const categories = state.bootstrap.categories || [];
+    const home = route.name === 'home';
+    const list = home ? categories.filter(category => !category.parent_id).slice(0, 3)
+        : categories.filter(category => category.parent_id === route.id);
+    if (!list.length && (!home || !categories.length)) return '';
+    return `<section class="wx-category-section" aria-labelledby="feed-categories-title">
+        <div class="section-heading">
+            <h2 id="feed-categories-title">${home ? tx('ui.directory.title') : tx('ui.directory.subcategories')}</h2>
+            ${home ? `<a class="wx-directory-link" href="#/categories">${tx('ui.directory.view_all')}${icon('arrow-right')}</a>` : ''}
+        </div>
+        ${list.length ? categoryCards(list, categories) : ''}
+    </section>`;
+}
+
+function renderDirectory() {
+    const categories = state.bootstrap.categories || [];
+    setHeader(tr('ui.directory.title'), tr('ui.directory.subtitle'));
+    $('#view').innerHTML = categories.length
+        ? `<section aria-labelledby="directory-heading"><div class="section-heading"><h2 id="directory-heading">${e(counted(categories.length, 'categories'))}</h2></div>${categoryCards(categories, categories)}</section>`
+        : `<div class="panel">${empty(tr('ui.nav.no_categories'), tr('ui.directory.empty'), 'layers')}</div>`;
+}
 function categoryTag(category){return category?`<a class="tag" href="#/category/${Number(category.id)}" style="--tone:${tone(category.color)}">${e(category.name)}</a>`:'';}
 function topicRow(t){return `<article class="topic-row">${avatar(t.author)}<div class="topic-row-content"><div class="topic-tags">${categoryTag(t.category)}${t.is_pinned?`<span class="tag tag-pinned">${icon('pin')}${tx('ui.topic.pinned')}</span>`:''}${t.is_locked?`<span class="tag tag-neutral">${icon('lock')}${tx('ui.topic.closed')}</span>`:''}${t.category?.is_private?`<span class="tag tag-private">${icon('lock')}${tx('ui.topic.private')}</span>`:''}</div><a href="#/thread/${Number(t.id)}" class="topic-title">${e(t.title)}</a>${t.excerpt?`<p class="topic-excerpt">${e(t.excerpt)}</p>`:''}<div class="topic-meta"><span class="author-name">${e(t.author?.name||tr('ui.user.fallback'))}</span><span class="meta-dot">·</span><time title="${e(dateTitle(t.updated_at||t.created_at))}">${e(relative(t.updated_at||t.created_at))}</time>${t.bookmarked?`<span title="${tx('ui.topic.saved_title')}">${icon('bookmark')}</span>`:''}</div></div><a href="#/thread/${Number(t.id)}" class="topic-stats" aria-label="${e(counted(t.replies_count,'replies'))}, ${e(counted(t.views,'views'))}"><span>${icon('message')}${compact(t.replies_count)}</span><span class="stat-views">${icon('eye')}${compact(t.views)}</span></a></article>`;}
-async function renderFeed(route,token){const view=$('#view');const category=(state.bootstrap.categories||[]).find(c=>c.id===route.id);let title=tr('ui.feed.home_title');let subtitle=state.bootstrap.settings?.tagline||tr('ui.feed.home_subtitle');if(route.name==='latest'){title=tr('ui.feed.latest_title');subtitle=tr('ui.feed.latest_subtitle');}if(route.name==='category'){title=category?.name||tr('ui.feed.category_title');subtitle=category?.description||tr('ui.feed.category_subtitle');}if(route.name==='search'){title=tr('ui.feed.search_title');subtitle=tr('ui.feed.search_subtitle',{query:route.query.get('q')||''});}if(route.name==='saved'){title=tr('ui.feed.saved_title');subtitle=tr('ui.feed.saved_subtitle');}setHeader(title,subtitle,route.name==='category'?tr('ui.feed.eyebrow_category'):tr('ui.feed.eyebrow'));if(route.name==='saved'&&!state.user){view.innerHTML=`<div class="panel">${empty(tr('ui.feed.saved_empty_title'),tr('ui.feed.saved_login_help'),'bookmark',`<button class="button button-primary" data-action="login">${tx('ui.auth.sign_in')}</button>`)}</div>`;return;}const query=new URLSearchParams({sort:state.sort,page:String(state.page)});if(route.name==='category')query.set('category',String(route.id));if(route.name==='search')query.set('q',route.query.get('q')||'');if(route.name==='saved')query.set('bookmarked','1');const r=await request('/api/threads?'+query);if(token!==state.viewToken)return;view.innerHTML=`${route.name==='home'?welcomePanel()+spaceCards():''}${category?.is_private?`<div class="private-category-banner">${icon('lock')} ${tx('ui.feed.private_notice')}</div>`:''}<section class="panel threads-panel" id="forum-list"><div class="discussion-toolbar"><h2>${e(route.name==='search'?tr('ui.feed.search_results'):route.name==='saved'?tr('ui.feed.saved_discussions'):tr('ui.feed.discussions_title'))}</h2><small>${e(counted(r.total,'topics'))}</small></div><div class="topic-tabs" role="tablist" aria-label="${tx('ui.feed.sort_label')}"><button class="topic-tab ${state.sort==='latest'?'active':''}" role="tab" aria-selected="${state.sort==='latest'}" data-action="sort" data-sort="latest">${icon('clock')}${tx('ui.feed.latest')}</button><button class="topic-tab ${state.sort==='popular'?'active':''}" role="tab" aria-selected="${state.sort==='popular'}" data-action="sort" data-sort="popular">${icon('fire')}${tx('ui.feed.popular')}</button><button class="topic-tab ${state.sort==='unanswered'?'active':''}" role="tab" aria-selected="${state.sort==='unanswered'}" data-action="sort" data-sort="unanswered">${icon('message')}${tx('ui.feed.unanswered')}</button></div><div>${r.data?.length?r.data.map(topicRow).join(''):empty(route.name==='search'?tr('ui.feed.search_empty'):route.name==='saved'?tr('ui.feed.collection_empty'):tr('ui.feed.first_discussion'),route.name==='search'?tr('ui.feed.search_empty_help'):route.name==='saved'?tr('ui.feed.collection_empty_help'):tr('ui.feed.first_help'),'message',route.name==='saved'?'':`<button class="button button-secondary" data-action="new-topic">${icon('plus')}${tx('ui.topic.create')}</button>`)}</div>${pagination(r.current_page||1,r.last_page||1,r.total||0)}</section>`;}
+async function renderFeed(route, token) {
+    const view = $('#view');
+    const category = (state.bootstrap.categories || []).find(item => item.id === route.id);
+    const term = route.query.get('q') || '';
+    const headings = {
+        home: [state.bootstrap.settings?.site_name || 'WojteX Forum', state.bootstrap.settings?.tagline || tr('ui.feed.home_subtitle')],
+        latest: [tr('ui.feed.latest_title'), tr('ui.feed.latest_subtitle')],
+        category: [category?.name || tr('ui.feed.category_title'), category?.description || tr('ui.feed.category_subtitle')],
+        search: [tr('ui.feed.search_title'), tr('ui.feed.search_subtitle', {query: term})],
+        saved: [tr('ui.feed.saved_title'), tr('ui.feed.saved_subtitle')]
+    };
+    const eyebrow = {home: '', category: tr('ui.feed.eyebrow_category')};
+    setHeader(...headings[route.name], eyebrow[route.name] ?? tr('ui.feed.eyebrow'));
+    if (route.name === 'saved' && !state.user) {
+        view.innerHTML = `<div class="panel">${empty(tr('ui.feed.saved_empty_title'), tr('ui.feed.saved_login_help'), 'bookmark', `<button class="button button-primary" data-action="login">${tx('ui.auth.sign_in')}</button>`)}</div>`;
+        return;
+    }
+
+    const query = new URLSearchParams({sort: state.sort, page: String(state.page)});
+    if (route.name === 'category') query.set('category', String(route.id));
+    if (route.name === 'search') query.set('q', term);
+    if (route.name === 'saved') query.set('bookmarked', '1');
+    const results = await request('/api/threads?' + query);
+    if (token !== state.viewToken) return;
+
+    const headingsByFeed = {
+        search: tr('ui.feed.search_results'),
+        saved: tr('ui.feed.saved_discussions')
+    };
+    const noResults = {
+        search: [tr('ui.feed.search_empty'), tr('ui.feed.search_empty_help'), 'search', `<button class="button button-secondary" data-action="quick-search">${tx('ui.quick_search.open')}</button>`],
+        saved: [tr('ui.feed.collection_empty'), tr('ui.feed.collection_empty_help'), 'bookmark']
+    };
+    const firstTopic = [tr('ui.feed.first_discussion'), tr('ui.feed.first_help'), 'message', `<button class="button button-secondary" data-action="new-topic">${icon('plus')}${tx('ui.topic.create')}</button>`];
+    const sorting = [
+        ['latest', 'clock', tx('ui.feed.latest')],
+        ['popular', 'fire', tx('ui.feed.popular')],
+        ['unanswered', 'message', tx('ui.feed.unanswered')]
+    ];
+    view.innerHTML = `
+        ${route.name === 'home' ? welcomePanel() : ''}
+        ${category?.is_private ? `<div class="private-category-banner">${icon('lock')} ${tx('ui.feed.private_notice')}</div>` : ''}
+        ${['home', 'category'].includes(route.name) ? feedCategories(route) : ''}
+        <section class="panel threads-panel" id="forum-list" aria-labelledby="discussion-heading">
+            <div class="discussion-toolbar"><h2 id="discussion-heading">${e(headingsByFeed[route.name] || tr('ui.feed.discussions_title'))}</h2><small>${e(counted(results.total, 'topics'))}</small></div>
+            <div class="topic-tabs" role="group" aria-label="${tx('ui.feed.sort_label')}">
+                ${sorting.map(([value, symbol, label]) => `<button type="button" class="topic-tab ${state.sort === value ? 'active' : ''}" aria-pressed="${state.sort === value}" data-action="sort" data-sort="${value}">${icon(symbol)}${label}</button>`).join('')}
+            </div>
+            <div>${results.data?.length ? results.data.map(topicRow).join('') : empty(...(noResults[route.name] || firstTopic))}</div>
+            ${pagination(results.current_page || 1, results.last_page || 1, results.total || 0)}
+        </section>`;
+}
 function pagination(current,last,total,label='topics'){if(last<=1)return '';return `<div class="pagination"><span>${tx('ui.pagination.summary',{current:count(current),last:count(last),total:counted(total,label)})}</span><div class="pagination-actions"><button class="button button-ghost" data-action="page" data-page="${current-1}" ${current<=1?'disabled':''} aria-label="${tx('ui.pagination.previous')}">${icon('arrow-left')}</button><button class="button button-ghost" data-action="page" data-page="${current+1}" ${current>=last?'disabled':''} aria-label="${tx('ui.pagination.next')}">${icon('arrow-right')}</button></div></div>`;}
 async function renderThread(id,token){
     const r=await request(`/api/threads/${id}?page=${state.threadPage}`);
@@ -295,6 +412,149 @@ function adminImport(){return `<div class="admin-intro"><h2>${tx('ui.import.titl
 function renderImportReport(){const el=$('#import-result');if(!el||!state.importReport)return;const r=state.importReport;const labels={users:tr('ui.import.accounts'),forums:tr('ui.admin.categories'),categories:tr('ui.admin.categories'),threads:tr('ui.import.topics'),posts:tr('ui.import.posts'),skipped:tr('ui.import.skipped')};const counts=r.counts||r.imported||{};let warnings=Array.isArray(r.warnings)?r.warnings:[];const imported=['completed','already_imported','imported','success'].includes(r.status)||r.imported===true;el.innerHTML=`<section class="import-result"><h3 class="${imported?'success-text':''}">${e(imported?tr('ui.import.completed'):tr('ui.import.analysis_result'))}</h3><div class="import-counts">${Object.entries(counts).map(([key,value])=>`<div class="import-count">${e(labels[key]||key)}<strong>${e(typeof value==='object'?JSON.stringify(value):count(value))}</strong></div>`).join('')}</div>${warnings.length?`<ul class="import-warnings">${warnings.map(w=>`<li>${e(typeof w==='object'?w.message||JSON.stringify(w):w)}</li>`).join('')}</ul>`:''}${r.source_id?`<p class="form-note section-spacer">${tx('ui.import.source',{source:r.source_id})}</p>`:''}<details><summary>${tx('ui.import.report')}</summary><pre>${e(JSON.stringify(r,null,2))}</pre></details>${state.importPreviewOK&&!imported?`<form data-form="import-execute"><div class="form-error" role="alert"></div><label class="checkbox-field"><input type="checkbox" name="confirm_private" required><span>${tx('ui.import.confirm_scope')}</span></label><div class="form-footer"><button class="button button-primary" type="submit">${icon('database')}${tx('ui.import.execute')}</button></div></form>`:''}${imported?`<div class="notice"><strong>${tx('ui.import.review_now')}</strong><p>${tx('ui.import.review_now_help')}</p></div>`:''}</section>`;}
 
 const dialog=$('#app-dialog');
+const quickSearchDialog = $('#quick-search-dialog');
+let quickSearchTimer;
+let quickSearchRequest;
+
+function stopQuickSearch() {
+    clearTimeout(quickSearchTimer);
+    quickSearchRequest?.abort();
+    quickSearchRequest = null;
+}
+
+function quickSearchLink(href, label, symbol, detail = '') {
+    return `<li><a class="wx-search-result" href="${e(href)}" data-quick-link>
+        ${icon(symbol)}<span><strong>${e(label)}</strong>${detail ? `<small>${e(detail)}</small>` : ''}</span>${icon('arrow-up-right')}
+    </a></li>`;
+}
+
+function openQuickSearch() {
+    if (quickSearchDialog.open || dialog.open) return;
+    stopQuickSearch();
+    quickSearchDialog.innerHTML = `
+        <header class="wx-search-heading"><h2 id="quick-search-title">${tx('ui.quick_search.title')}</h2>
+            <button type="button" class="icon-button" data-quick-close aria-label="${tx('ui.common.close')}">${icon('close')}</button>
+        </header>
+        <form class="wx-search-form" role="search">
+            <label class="sr-only" for="quick-search-input">${tx('ui.quick_search.input')}</label>
+            <div class="wx-search-field">${icon('search')}
+                <input type="search" id="quick-search-input" placeholder="${tx('ui.quick_search.placeholder')}" maxlength="150" autocomplete="off" autofocus>
+            </div>
+            <div class="wx-search-groups">
+                <section data-quick-destinations aria-labelledby="quick-destinations-title">
+                    <h3 id="quick-destinations-title">${tx('ui.quick_search.destinations')}</h3><ul></ul>
+                </section>
+                <section data-quick-categories aria-labelledby="quick-categories-title" hidden>
+                    <h3 id="quick-categories-title">${tx('ui.directory.title')}</h3><ul></ul>
+                </section>
+                <section data-quick-topics aria-labelledby="quick-topics-title" hidden>
+                    <h3 id="quick-topics-title">${tx('ui.quick_search.topics')}</h3>
+                    <p class="wx-search-status" role="status"></p><ul></ul>
+                </section>
+            </div>
+            <button type="submit" class="button button-primary wx-search-submit">${icon('search')}${tx('ui.quick_search.full_search')}${icon('arrow-right')}</button>
+        </form>`;
+
+    const destinations = [
+        quickSearchLink('#/latest', tr('ui.nav.latest'), 'clock'),
+        quickSearchLink('#/categories', tr('ui.directory.title'), 'layers'),
+        ...(state.user ? [quickSearchLink('#/saved', tr('ui.nav.saved'), 'bookmark'),
+            quickSearchLink('#/messages', tr('ui.messages.title'), 'message')] : [])
+    ];
+    $('[data-quick-destinations] ul', quickSearchDialog).innerHTML = destinations.join('');
+    const input = $('#quick-search-input', quickSearchDialog);
+    input.value = state.route?.name === 'search' ? state.route.query.get('q') || '' : '';
+    quickSearchDialog.showModal();
+    input.focus();
+    input.select();
+    updateQuickSearch();
+}
+
+function updateQuickSearch() {
+    stopQuickSearch();
+    const term = $('#quick-search-input', quickSearchDialog).value.trim();
+    const matching = term.toLocaleLowerCase(activeLocale());
+    const categories = state.bootstrap?.categories || [];
+    const groups = {
+        destinations: $('[data-quick-destinations]', quickSearchDialog),
+        categories: $('[data-quick-categories]', quickSearchDialog),
+        topics: $('[data-quick-topics]', quickSearchDialog)
+    };
+    const matchingCategories = categories.filter(category => term
+        ? category.name.toLocaleLowerCase(activeLocale()).includes(matching)
+        : !category.parent_id).slice(0, 4);
+    groups.destinations.hidden = Boolean(term);
+    groups.categories.hidden = !matchingCategories.length;
+    $('ul', groups.categories).innerHTML = matchingCategories.map(category => {
+        const parent = categories.find(item => item.id === category.parent_id);
+        return quickSearchLink(`#/category/${Number(category.id)}`, category.name, category.is_private ? 'lock' : 'layers', parent?.name);
+    }).join('');
+    $('.wx-search-submit', quickSearchDialog).disabled = !term;
+
+    const resultList = $('ul', groups.topics);
+    const status = $('.wx-search-status', groups.topics);
+    resultList.replaceChildren();
+    status.textContent = '';
+    groups.topics.hidden = Array.from(term).length < 2;
+    if (groups.topics.hidden) return;
+
+    status.textContent = tr('ui.quick_search.loading');
+    const controller = new AbortController();
+    quickSearchRequest = controller;
+    quickSearchTimer = setTimeout(async () => {
+        try {
+            const results = await request('/api/threads/quick-search?' + new URLSearchParams({q: term}), {signal: controller.signal});
+            if (controller.signal.aborted || !quickSearchDialog.open) return;
+            resultList.innerHTML = results.data.map(topic => {
+                const category = categories.find(item => item.id === Number(topic.category_id));
+                return quickSearchLink(`#/thread/${Number(topic.id)}`, topic.title, 'message', category?.name);
+            }).join('');
+            status.textContent = results.data.length
+                ? counted(results.data.length, 'topics')
+                : tr('ui.quick_search.no_titles');
+        } catch (_) {
+            if (!controller.signal.aborted && quickSearchDialog.open) status.textContent = tr('ui.quick_search.failed');
+        }
+    }, 300);
+}
+
+quickSearchDialog.addEventListener('input', event => {
+    if (event.target.id === 'quick-search-input' && !event.isComposing) updateQuickSearch();
+});
+quickSearchDialog.addEventListener('compositionend', updateQuickSearch);
+quickSearchDialog.addEventListener('submit', event => {
+    event.preventDefault();
+    const term = $('#quick-search-input', quickSearchDialog).value.trim();
+    if (!term) return;
+    quickSearchDialog.close();
+    location.hash = '/search?' + new URLSearchParams({q: term});
+    $('#main-content').focus();
+});
+quickSearchDialog.addEventListener('close', () => {
+    if (!quickSearchDialog.open) stopQuickSearch();
+});
+quickSearchDialog.addEventListener('click', event => {
+    if (event.target.closest('[data-quick-close]')) quickSearchDialog.close();
+    if (event.target.closest('[data-quick-link]') && !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey) {
+        quickSearchDialog.close();
+        $('#main-content').focus();
+    }
+    if (event.target === quickSearchDialog) {
+        const {left, right, top, bottom} = quickSearchDialog.getBoundingClientRect();
+        if (event.clientX < left || event.clientX > right || event.clientY < top || event.clientY > bottom) quickSearchDialog.close();
+    }
+});
+quickSearchDialog.addEventListener('keydown', event => {
+    if (!['ArrowDown', 'ArrowUp'].includes(event.key) || event.isComposing) return;
+    const options = $$('#quick-search-input, section:not([hidden]) [data-quick-link], .wx-search-submit:not(:disabled)', quickSearchDialog);
+    const current = options.indexOf(event.target);
+    if (current < 0) return;
+    const next = current + (event.key === 'ArrowDown' ? 1 : -1);
+    if (!options[next]) return;
+    event.preventDefault();
+    options[next].focus();
+});
+
 function modal(title,subtitle,content,wide=false,ico=null){dialog.classList.toggle('wide',wide);dialog.classList.toggle('wx-composer',/data-form="(?:new-topic|edit-post)"/.test(content));$('#dialog-content').innerHTML=`<div class="dialog-header"><div>${ico?`<div class="dialog-icon">${icon(ico)}</div>`:''}<h2 id="dialog-title">${e(title)}</h2>${subtitle?`<p>${e(subtitle)}</p>`:''}</div><button class="icon-button dialog-close" data-action="close-dialog" aria-label="${tx('ui.common.close')}">${icon('close')}</button></div><div class="dialog-content">${content}</div>`;if(!dialog.open)dialog.showModal();setTimeout(()=>{const focus=$('input:not([type=hidden]),textarea,select',dialog);if(focus)focus.focus();},50);}
 function closeDialog(){if(dialog.open)dialog.close();}
 function ensureAuth(){if(state.user)return true;authModal('login');return false;}
@@ -318,7 +578,17 @@ function editPostModal(id){const p=state.thread?.posts?.find(p=>p.id===id);if(!p
 function attachmentModal(id){modal(tr('ui.attachment.title'),tr('ui.attachment.subtitle'),`<form data-form="attachment" data-id="${id}"><div class="form-error" role="alert"></div><label class="field"><span>${tx('ui.common.choose_file')}</span><input type="file" name="file" required accept=".png,.jpg,.jpeg,.gif,.webp,.pdf,.txt,.zip"><small>${tx('ui.attachment.limits')}</small></label><div class="form-footer"><button type="submit" class="button button-primary">${icon('upload')}${tx('ui.common.upload_file')}</button></div></form>`,false,'paperclip');}
 function categoryModal(id=null){const c=(state.admin?.categories||state.bootstrap.categories||[]).find(c=>c.id===id)||{name:'',description:'',color:'violet',icon:'code',is_private:false,parent_id:null};const optionIcons={code:tr('ui.category.icon_code'),game:tr('ui.category.icon_games'),star:tr('ui.category.icon_ideas'),rocket:tr('ui.category.icon_projects'),chat:tr('ui.category.icon_chat'),folder:tr('ui.category.icon_folder'),shield:tr('ui.category.icon_admin'),book:tr('ui.category.icon_guides'),help:tr('ui.category.icon_help'),terminal:tr('ui.category.icon_terminal')};modal(id?tr('ui.category.edit_title'):tr('ui.category.new_title'),tr('ui.category.subtitle'),`<form data-form="category" ${id?`data-id="${id}"`:''}><div class="form-error" role="alert"></div><label class="field"><span>${tx('ui.category.name')}</span><input name="name" required minlength="2" maxlength="120" value="${e(c.name)}"></label><label class="field"><span>${tx('ui.category.description')}</span><textarea name="description" maxlength="500">${e(c.description)}</textarea></label><div class="form-row"><label class="field"><span>${tx('ui.category.color')}</span><select name="color">${['violet','cyan','blue','green','amber','rose'].map(k=>`<option value="${k}" ${c.color===k?'selected':''}>${e(({violet:tr('ui.category.violet'),cyan:tr('ui.category.cyan'),blue:tr('ui.category.blue'),green:tr('ui.category.green'),amber:tr('ui.category.amber'),rose:tr('ui.category.rose'),slate:tr('ui.category.slate')})[k])}</option>`).join('')}</select></label><label class="field"><span>${tx('ui.category.icon')}</span><select name="icon">${Object.entries(optionIcons).map(([k,v])=>`<option value="${k}" ${c.icon===k?'selected':''}>${e(v)}</option>`).join('')}</select></label></div><label class="checkbox-field"><input name="is_private" type="checkbox" ${c.is_private?'checked':''}><span>${tx('ui.category.private')}</span></label><div class="form-footer"><button class="button button-primary" type="submit">${icon('check')}${e(id?tr('ui.common.save_changes'):tr('ui.category.create'))}</button></div></form>`,false,'layers');}
 function confirmModal(title,text,buttonLabel,callback,danger=true){state.confirmAction=callback;modal(title,text,`<form data-form="confirm"><div class="form-error" role="alert"></div><div class="form-footer"><button type="button" class="button button-ghost" data-action="close-dialog">${tx('ui.common.cancel')}</button><button type="submit" class="button ${danger?'button-danger':'button-primary'}">${e(buttonLabel)}</button></div></form>`,false,danger?'alert':'info');}
-function closeSidebar(){$('#sidebar').classList.remove('open');$('#sidebar-backdrop').classList.remove('visible');}
+function setSidebarOpen(open) {
+    const sidebar = $('#sidebar');
+    const trigger = $('.mobile-menu');
+    if (sidebar.classList.contains('open') === open) return;
+    sidebar.classList.toggle('open', open);
+    $('#sidebar-backdrop').classList.toggle('visible', open);
+    trigger.setAttribute('aria-expanded', String(open));
+    if (open) $('.brand', sidebar).focus();
+    else if (sidebar.contains(document.activeElement) && trigger.getClientRects().length) trigger.focus();
+}
+function closeSidebar() { setSidebarOpen(false); }
 function updateRouteQuery(values){const route=routeInfo();Object.entries(values).forEach(([k,v])=>v===null?route.query.delete(k):route.query.set(k,String(v)));const base=route.name==='home'?'':route.name+(route.id?'/'+route.id:'');location.hash='/'+base+(route.query.size?'?'+route.query.toString():'');}
 function reportReasonLabel(reason){
     const labels={spam:tx('ui.reports.reason_spam'),harassment:tx('ui.reports.reason_harassment'),
@@ -359,7 +629,7 @@ async function refreshLanguages(){state.languageData=await request('/api/admin/l
 async function refreshAdmin(){state.admin=await request('/api/admin');if(state.adminTab==='languages')await refreshLanguages();if(state.adminTab==='groups')await refreshGroups();if(state.adminTab==='message-reports')await refreshReports();renderAdminView();}
 
 async function handleAction(button){const a=button.dataset.action,id=Number(button.dataset.id);switch(a){
-case 'toggle-menu':$('#sidebar').classList.toggle('open');$('#sidebar-backdrop').classList.toggle('visible');break;
+case 'toggle-menu':setSidebarOpen(button.getAttribute('aria-expanded') !== 'true');break;
 case 'appearance':modal(tr('ui.appearance.title'),tr('ui.appearance.subtitle'),WojtexAppearance.render(tx),true,'sun');break;
 case 'reset-appearance':{const saved=WojtexAppearance.reset();$('#wx-appearance-status').textContent=tr(saved?'ui.appearance.saved_hint':'ui.appearance.storage_unavailable');}break;
 case 'login':if(state.route?.name==='reset-password'){history.replaceState(null,'',location.pathname+location.search+'#/login');await navigate();}else authModal('login');break;
@@ -369,7 +639,7 @@ case 'account':accountModal();break;
 case 'close-dialog':case 'close-on-nav':closeDialog();break;
 case 'logout':await request('/api/auth/logout',{method:'POST'});closeDialog();state.shouts=[];state.lastShoutId=0;await reloadData();toast(tr('ui.auth.signed_out'));break;
 case 'new-topic':newTopicModal();break;
-case 'scroll-discussions':$('#forum-list')?.scrollIntoView({behavior:'smooth',block:'start'});break;
+case 'quick-search':openQuickSearch();break;
 case 'sort':updateRouteQuery({sort:button.dataset.sort,page:null});break;
 case 'page':updateRouteQuery({page:button.dataset.page});window.scrollTo({top:0,behavior:'smooth'});break;
 case 'message-find':{
@@ -435,7 +705,7 @@ case 'edit-category':categoryModal(id);break;
 case 'category-visibility':{const c=(state.admin.categories||state.bootstrap.categories).find(c=>c.id===id);const makePublic=!!c.is_private;confirmModal(makePublic?tr('ui.admin.public_title'):tr('ui.admin.private_title'),makePublic?tr('ui.admin.public_body',{name:c.name}):tr('ui.admin.private_body',{name:c.name}),makePublic?tr('ui.admin.make_public'):tr('ui.admin.make_private'),async()=>{await request(`/api/admin/categories/${id}`,{method:'PATCH',body:{is_private:!c.is_private}});closeDialog();await loadBootstrap();await refreshAdmin();toast(tr('ui.admin.visibility_saved'));},false);}break;
 }}
 
-document.addEventListener('click',async event=>{const button=event.target.closest('[data-action]');if(!button||button.disabled)return;if(button.tagName!=='A')event.preventDefault();if(button.dataset.busy==='1')return;const immediate=['toggle-menu','appearance','reset-appearance','login','register','account','close-dialog','close-on-nav','new-topic','scroll-discussions','sort','page','quote','edit-post','attach-post','delete-post','delete-thread','delete-shout','format','admin-tab','ban-user','group-delete','new-category','edit-category','category-visibility'];const busy=!immediate.includes(button.dataset.action);try{if(busy){button.dataset.busy='1';button.setAttribute('aria-busy','true');button.disabled=true;}await handleAction(button);}catch(err){toast(err.message,true);if(err.status===401){state.user=null;authModal('login');}}finally{if(busy){button.dataset.busy='0';button.removeAttribute('aria-busy');button.disabled=false;}}});
+document.addEventListener('click',async event=>{const button=event.target.closest('[data-action]');if(!button||button.disabled)return;if(button.tagName!=='A')event.preventDefault();if(button.dataset.busy==='1')return;const immediate=['toggle-menu','appearance','reset-appearance','login','register','account','close-dialog','close-on-nav','new-topic','quick-search','sort','page','quote','edit-post','attach-post','delete-post','delete-thread','delete-shout','format','admin-tab','ban-user','group-delete','new-category','edit-category','category-visibility'];const busy=!immediate.includes(button.dataset.action);try{if(busy){button.dataset.busy='1';button.setAttribute('aria-busy','true');button.disabled=true;}await handleAction(button);}catch(err){toast(err.message,true);if(err.status===401){state.user=null;authModal('login');}}finally{if(busy){button.dataset.busy='0';button.removeAttribute('aria-busy');button.disabled=false;}}});
 
 async function submitForm(form){const type=form.dataset.form;const values=Object.fromEntries(new FormData(form).entries());switch(type){
 case 'login':case 'register':{await request('/api/auth/'+type,{method:'POST',body:values});closeDialog();state.shouts=[];state.lastShoutId=0;await reloadData();toast(type==='register'?tr('ui.auth.registered'):tr('ui.auth.welcome_back'));}break;
@@ -464,12 +734,27 @@ case 'import-execute':{if(!state.importFile||!state.importPreviewOK)throw new Er
 case 'confirm':if(state.confirmAction)await state.confirmAction();break;
 }}
 async function updateStats(){try{const boot=await request('/api/bootstrap');state.bootstrap.stats=boot.stats;state.bootstrap.categories=boot.categories;renderCategoryNav();renderAside();}catch(_){}}
-document.addEventListener('submit',async event=>{const form=event.target;if(form.id==='search-form'){event.preventDefault();const q=$('#global-search').value.trim();location.hash=q?'/search?q='+encodeURIComponent(q):'/';return;}if(!form.dataset.form)return;event.preventDefault();if(form.dataset.busy==='1')return;form.dataset.busy='1';const error=$('.form-error',form);if(error)error.textContent='';const buttons=$$('button[type=submit]',form);buttons.forEach(b=>{b.disabled=true;b.setAttribute('aria-busy','true');});try{await submitForm(form);}catch(err){if(error&&error.isConnected)error.textContent=err.message;else toast(err.message,true);}finally{form.dataset.busy='0';buttons.forEach(b=>{b.disabled=false;b.removeAttribute('aria-busy');});}});
+document.addEventListener('submit',async event=>{const form=event.target;if(!form.dataset.form)return;event.preventDefault();if(form.dataset.busy==='1')return;form.dataset.busy='1';const error=$('.form-error',form);if(error)error.textContent='';const buttons=$$('button[type=submit]',form);buttons.forEach(b=>{b.disabled=true;b.setAttribute('aria-busy','true');});try{await submitForm(form);}catch(err){if(error&&error.isConnected)error.textContent=err.message;else toast(err.message,true);}finally{form.dataset.busy='0';buttons.forEach(b=>{b.disabled=false;b.removeAttribute('aria-busy');});}});
 document.addEventListener('input',event=>{if(event.target.matches('[data-form="private-message"] [name="recipient_query"]')){const form=event.target.closest('form');const selection=$('[name="recipient_id"]',form);if(selection)selection.innerHTML=`<option value="">${tx('ui.messages.recipient_choose')}</option>`;const status=$('[data-recipient-status]',form);if(status)status.textContent='';}});
 document.addEventListener('change',event=>{if(event.target.id==='locale-picker'){changeLocale(event.target);return;}if(event.target.matches('[data-form="import"] input[name=file]')){state.importPreviewOK=false;state.importFile=event.target.files[0]||null;state.importReport=null;const result=$('#import-result');if(result)result.innerHTML='';}});
 $('#sidebar-backdrop').addEventListener('click',closeSidebar);
 dialog.addEventListener('click',event=>{if(event.target===dialog){const r=dialog.getBoundingClientRect();if(event.clientX<r.left||event.clientX>r.right||event.clientY<r.top||event.clientY>r.bottom)closeDialog();}});
-document.addEventListener('keydown',event=>{const typing=event.target.closest('input,textarea,select,[contenteditable]');if(event.key==='/'&&!typing&&!dialog.open){event.preventDefault();$('#global-search').focus();}if(event.key==='Escape')closeSidebar();});
+document.addEventListener('keydown', event => {
+    if (event.defaultPrevented || event.isComposing) return;
+    const typing = event.target.closest('input, textarea, select, [contenteditable]');
+    const slash = event.key === '/' && !typing && !event.altKey && !event.ctrlKey && !event.metaKey;
+    const command = event.key.toLowerCase() === 'k' && (event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey;
+    if ((command || (slash && !quickSearchDialog.open)) && !dialog.open) {
+        event.preventDefault();
+        if (quickSearchDialog.open) $('#quick-search-input', quickSearchDialog).focus();
+        else openQuickSearch();
+    }
+    if (event.key === 'Escape') closeSidebar();
+});
+$('.skip-link').addEventListener('click', event => {
+    event.preventDefault();
+    $('#main-content').focus();
+});
 window.addEventListener('hashchange',()=>navigate());
 setInterval(()=>{if(document.visibilityState==='visible'&&state.bootstrap&&pluginEnabled('shoutbox')){const visible=$$('[data-shout-list]').some(el=>el.getClientRects().length>0);if(visible)refreshShouts();}},5000);
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&state.bootstrap)refreshShouts(true);});

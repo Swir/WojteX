@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Updated home page and category cards, with a directory for all visible categories and direct access to subcategories from their parent.
+- Quick search from the header, `/` or `Ctrl/⌘+K`. Jump to categories, preview matching topic titles, or search titles and post contents together. Suggestions use live forum permissions and work in Polish and English.
+- Updated Laravel to 13.44.1 and the affected Symfony components to 7.4.24 to address the advisories reported by Composer audit.
 - Discussion pages use one visible topic heading, readable 16px post text, a focused reading column, a reply shortcut and expandable moderator actions.
 - Wider topic/edit composer with larger fields and formatting controls, a sticky header/footer, and optional attachments in an expandable section.
 - New topics opened from a discussion inherit its category. Publishing starts at the top of the new topic.

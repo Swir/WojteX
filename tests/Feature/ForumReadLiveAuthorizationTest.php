@@ -61,6 +61,8 @@ class ForumReadLiveAuthorizationTest extends TestCase
         [$staff, $threadId, $attachmentId] = $this->fixture();
         $this->actingAs($staff);
         $this->getJson('/api/threads/'.$threadId)->assertOk();
+        $this->getJson('/api/threads/quick-search?q=Classified')->assertOk()
+            ->assertJsonPath('data.0.title', 'Classified plans');
 
         // Deliberately retain an old authenticated Eloquent object saying
         // "moderator" while the authoritative database now says "member".
@@ -68,6 +70,8 @@ class ForumReadLiveAuthorizationTest extends TestCase
         $this->assertSame('moderator', $staff->role);
         $this->getJson('/api/threads/'.$threadId)->assertNotFound();
         $this->getJson('/api/threads?q=Classified')->assertOk()
+            ->assertJsonCount(0, 'data')->assertDontSee('Classified plans');
+        $this->getJson('/api/threads/quick-search?q=Classified')->assertOk()
             ->assertJsonCount(0, 'data')->assertDontSee('Classified plans');
         $this->getJson('/api/bootstrap')->assertOk()
             ->assertJsonCount(0, 'categories')->assertDontSee('Secret department');
@@ -104,7 +108,31 @@ class ForumReadLiveAuthorizationTest extends TestCase
     {
         [, $threadId] = $this->fixture();
         $this->getJson('/api/threads/'.$threadId)->assertNotFound();
+        $this->getJson('/api/threads/quick-search?q=Classified')->assertOk()->assertExactJson(['data' => []]);
         $this->getJson('/api/bootstrap')->assertOk()
             ->assertJsonCount(0, 'categories');
+    }
+
+    public function test_quick_search_returns_at_most_six_literal_title_matches_without_post_content(): void
+    {
+        [, $threadId] = $this->fixture();
+        $thread = (array) DB::table('threads')->where('id', $threadId)->first();
+        DB::table('categories')->where('id', $thread['category_id'])->update(['is_private' => false]);
+        DB::table('threads')->where('id', $threadId)->update(['title' => '100% complete']);
+        unset($thread['id']);
+        for ($i = 1; $i <= 8; $i++) {
+            DB::table('threads')->insert(array_replace($thread, [
+                'slug' => "progress-$i",
+                'title' => $i === 8 ? '100x complete' : "Progress 100% ($i)",
+            ]));
+        }
+
+        $this->getJson('/api/threads/quick-search?q=100%25')->assertOk()
+            ->assertJsonCount(6, 'data')->assertJsonPath('data.0.title', 'Progress 100% (7)')
+            ->assertJsonStructure(['data' => [['id', 'title', 'category_id']]])
+            ->assertDontSee('Confidential department data.')->assertDontSee('100x complete');
+        $this->getJson('/api/threads/quick-search?q=Confidential')->assertOk()->assertExactJson(['data' => []]);
+        $this->getJson('/api/threads?q=Confidential')->assertOk()->assertJsonPath('data.0.title', '100% complete');
+        $this->getJson('/api/threads/quick-search?q=x')->assertUnprocessable();
     }
 }

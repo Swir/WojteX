@@ -47,6 +47,16 @@ class ForumController extends Controller
         return response()->json(['data'=>Forum::threadsData($page->getCollection()),'current_page'=>$page->currentPage(),'last_page'=>$page->lastPage(),'total'=>$page->total()]);
     }
 
+    public function quickSearch(Request $request)
+    {
+        $data = $request->validate(['q' => 'required|string|min:2|max:150']);
+        $threads = Forum::threadQuery($request->user())->select('t.id', 't.title', 't.category_id');
+        $results = ThreadSearchQuery::applyTitle($threads, $data['q'])
+            ->orderByDesc('t.updated_at')->orderByDesc('t.id')->limit(6)->get();
+
+        return response()->json(['data' => $results]);
+    }
+
     public function create(Request $request)
     {
         $data=$request->validate(['category_id'=>'required|integer','title'=>'required|string|min:5|max:180','body'=>'required|string|min:3|max:50000']);
