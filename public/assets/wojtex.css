@@ -224,6 +224,19 @@
     font-size: 16px;
 }
 .wx-follow-category select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.wx-saved-filters {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 10px 12px;
+    padding: 8px 20px 4px;
+}
+.wx-saved-filters .field { flex: 1 1 11rem; min-width: 0; margin: 0; }
+.wx-saved-filters .field > span { color: var(--muted); font-size: 13px; }
+.wx-saved-filters input, .wx-saved-filters select { min-height: 44px; font-size: 16px; }
+.wx-saved-filter-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.wx-saved-filter-actions .button { min-height: 44px; }
+.wx-saved-filters :is(input, select, button):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .wx-unread-divider { display: flex; align-items: center; gap: 12px; color: var(--accent); font-size: 13px; font-weight: 650; }
 .wx-unread-divider::before, .wx-unread-divider::after { content: ''; flex: 1; height: 1px; background: currentColor; opacity: .42; }
 
@@ -305,6 +318,9 @@
     .wx-unread-link { min-height: 40px; }
     .wx-mark-thread-read { min-height: 44px; }
     .wx-follow-category { padding-inline: 15px; }
+    .wx-saved-filters { padding-inline: 15px; }
+    .wx-saved-filters .field { flex-basis: 9rem; }
+    .wx-saved-filter-actions { flex-basis: 100%; }
     .sidebar:not(.open) { visibility: hidden; }
     .wx-welcome { border-radius: 16px; }
     .wx-welcome + *, .wx-category-section + * { margin-top: 18px; }

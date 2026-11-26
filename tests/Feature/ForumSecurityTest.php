@@ -606,6 +606,33 @@ class ForumSecurityTest extends TestCase
         $this->actingAs($reader)->getJson('/api/threads?bookmarked=1')->assertOk()->assertJsonCount(0, 'data');
     }
 
+    public function test_saved_topic_search_combines_category_bookmark_and_live_visibility(): void
+    {
+        $author = $this->user();
+        $reader = $this->user();
+        $category = $this->category();
+        [$titleMatch] = $this->thread($author, $category, 'Setup 100% done');
+        [$replyMatch] = $this->thread($author, $category, 'Project discussion');
+        $this->makePost($author, $replyMatch, 'The upgrade is 100% complete.');
+        [$wrongCategory] = $this->thread($author, $this->category(), 'Another 100% result');
+        [$otherBookmark] = $this->thread($author, $category, 'Someone else’s 100% result');
+        [$nonLiteral] = $this->thread($author, $category, 'Only 100 tickets');
+        $search = '/api/threads?bookmarked=1&q=100%25&category='.$category;
+
+        $this->getJson($search)->assertUnauthorized();
+        $this->actingAs($author)->putJson('/api/threads/'.$otherBookmark.'/bookmark')->assertOk();
+        $this->actingAs($reader);
+        foreach ([$titleMatch, $replyMatch, $wrongCategory, $nonLiteral] as $thread) {
+            $this->putJson('/api/threads/'.$thread.'/bookmark')->assertOk();
+        }
+
+        $results = $this->getJson($search)->assertOk()->assertJsonPath('total', 2);
+        $this->assertEqualsCanonicalizing([$titleMatch, $replyMatch], array_column($results->json('data'), 'id'));
+
+        DB::table('categories')->where('id', $category)->update(['is_private' => true]);
+        $this->getJson($search)->assertOk()->assertJsonPath('total', 0)->assertJsonCount(0, 'data');
+    }
+
     public function test_saving_and_removing_the_same_bookmark_multiple_times_is_idempotent(): void
     {
         $author = $this->user();
