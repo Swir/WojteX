@@ -400,6 +400,8 @@ async function changeBookmark(button, id) {
 function topicRow(topic) {
     const url = `#/thread/${Number(topic.id)}`;
     const timestamp = topic.updated_at || topic.created_at;
+    const relativeActivity = relative(timestamp);
+    const activity = `<time title="${e(dateTitle(timestamp))}">${e(relativeActivity)}</time>`;
     return `<article class="topic-row${state.user ? ' wx-topic-row-personal' : ''}">
         ${avatar(topic.author)}
         <div class="topic-row-content">
@@ -414,7 +416,7 @@ function topicRow(topic) {
             ${topic.excerpt ? `<p class="topic-excerpt">${e(topic.excerpt)}</p>` : ''}
             <div class="topic-meta">
                 <span class="author-name">${e(topic.author?.name || tr('ui.user.fallback'))}</span><span class="meta-dot">·</span>
-                <time title="${e(dateTitle(timestamp))}">${e(relative(timestamp))}</time>
+                ${topic.replies_count > 0 ? `<a class="wx-latest-activity" href="${url}?latest=1" aria-label="${tx('ui.topic.latest_activity', {title: topic.title, time: relativeActivity})}">${activity}${icon('arrow-up-right')}</a>` : activity}
             </div>
             ${topic.first_unread_post_id ? `<button type="button" class="text-button wx-mark-thread-read" data-action="mark-thread-read" data-id="${Number(topic.id)}" aria-label="${tx('ui.follow.mark_read_label', {title: topic.title})}">${icon('check-circle')}${tx('ui.follow.mark_read')}</button>` : ''}
         </div>
@@ -565,9 +567,11 @@ async function renderThread(id,token){
     const query = new URLSearchParams();
     const targetPost = state.route.query.get('post');
     const unread = state.route.query.get('unread') === '1';
+    const latest = state.route.query.get('latest') === '1';
     if (targetPost) query.set('post', targetPost);
     if (unread) query.set('unread', '1');
-    if ((!targetPost && !unread) || state.route.query.has('page')) query.set('page', state.threadPage);
+    if (latest) query.set('latest', '1');
+    if ((!targetPost && !unread && !latest) || state.route.query.has('page')) query.set('page', state.threadPage);
     const r=await request(`/api/threads/${id}?${query}`);
     if(token!==state.viewToken)return;
     state.thread=r;
@@ -588,6 +592,7 @@ async function renderThread(id,token){
             <div class="topic-meta">${avatar(t.author,'small')}<span class="author-name">${e(t.author?.name||tr('ui.user.fallback'))}</span><span class="meta-dot">·</span><time title="${e(dateTitle(t.created_at))}">${e(relative(t.created_at))}</time><span class="meta-dot">·</span><span>${e(counted(t.views,'views'))}</span></div>
             <div class="thread-head-actions">
                 ${canReply?`<button class="button button-primary" data-action="focus-reply">${icon('message')}${tx('ui.topic.reply')}</button>`:''}
+                ${r.total_posts > 1 ? `<a class="button button-secondary" href="#/thread/${id}?latest=1">${icon('chevron-down')}${tx('ui.topic.latest_post')}</a>` : ''}
                 <button type="button" class="button ${t.bookmarked ? 'button-primary' : 'button-secondary'}" data-action="bookmark" data-id="${id}" aria-pressed="${!!t.bookmarked}" aria-label="${tx('ui.topic.save')}" title="${e(bookmarkAction(t.bookmarked))}">${icon('bookmark')}<span data-bookmark-label>${t.bookmarked ? tx('ui.topic.saved') : tx('ui.topic.save')}</span></button>
                 <button type="button" class="button button-secondary wx-follow-button" data-action="follow-thread" data-id="${id}" aria-label="${tx('ui.follow.follow')}" aria-pressed="${!!r.follow}">${followButtonContent(r.follow)}</button>
                 <button class="button button-ghost" data-action="copy-thread">${icon('link')}${tx('ui.topic.copy')}</button>
@@ -610,6 +615,10 @@ async function renderThread(id,token){
 
     const target = document.getElementById('post-' + Number(r.target_post_id ?? targetPost));
     if (target) {
+        if (latest && !targetPost && !unread) {
+            history.replaceState(history.state, '', `#/thread/${id}?post=${Number(r.target_post_id)}`);
+            state.route = routeInfo();
+        }
         target.tabIndex = -1;
         target.focus({preventScroll: true});
         target.scrollIntoView({block: 'start'});
@@ -1356,7 +1365,7 @@ case 'sort':updateRouteQuery({sort:button.dataset.sort,page:null});break;
 case 'clear-saved-filters':$('#saved-query')?.focus({preventScroll:true});updateRouteQuery({q:null,category:null,page:null});break;
 case 'page': {
     const next = {page: button.dataset.page};
-    if (state.route?.name === 'thread') Object.assign(next, {post: null, unread: null});
+    if (state.route?.name === 'thread') Object.assign(next, {post: null, unread: null, latest: null});
     updateRouteQuery(next);
     window.scrollTo({top: 0, behavior: 'smooth'});
     break;
@@ -1538,7 +1547,7 @@ case 'reply': {
     clearPublishedDraft(form, submitted);
     const route = routeInfo();
     if (route.name === 'thread' && route.id === id) {
-        updateRouteQuery({page: result.page ?? state.threadPage, post: result.post.id, unread: null});
+        updateRouteQuery({page: result.page ?? state.threadPage, post: result.post.id, unread: null, latest: null});
     }
     toast(tr('ui.post.published'));
     await updateStats();

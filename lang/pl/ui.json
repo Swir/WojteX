@@ -187,6 +187,8 @@
   "ui.topic.new": "Nowy temat",
   "ui.topic.delete": "Usuń temat",
   "ui.topic.copy": "Kopiuj link",
+  "ui.topic.latest_post": "Ostatni wpis",
+  "ui.topic.latest_activity": "Ostatni wpis w temacie „:title”. Aktywność :time.",
   "ui.topic.pin": "Przypnij",
   "ui.topic.unpin": "Odepnij",
   "ui.topic.discussion": "Dyskusja",

@@ -214,6 +214,37 @@ class ForumSecurityTest extends TestCase
         $this->getJson('/api/threads/'.$thread.'?post='.$newPost)->assertNotFound();
     }
 
+    public function test_latest_post_opens_the_final_page_and_obeys_normal_topic_access(): void
+    {
+        $owner = $this->user('admin');
+        [$thread, $first] = $this->thread($owner, $this->category());
+        $posts = [$first];
+        for ($number = 2; $number <= 42; $number++) {
+            $posts[] = $this->makePost($owner, $thread, 'Reply '.$number);
+        }
+        [$privateThread, $privatePost] = $this->thread($owner, $this->category(true));
+        $url = '/api/threads/'.$thread;
+
+        $this->getJson($url.'?latest=1&page=1')->assertOk()->assertJsonPath('page', 2)
+            ->assertJsonPath('last_page', 2)->assertJsonPath('total_posts', 42)
+            ->assertJsonCount(2, 'posts')->assertJsonPath('posts.0.id', $posts[40])
+            ->assertJsonPath('posts.1.id', $posts[41])->assertJsonPath('target_post_id', $posts[41]);
+        $this->getJson($url.'?latest=1&post='.$first)->assertOk()->assertJsonPath('page', 1)
+            ->assertJsonPath('target_post_id', $first);
+
+        DB::table('posts')->whereIn('id', [$posts[39], $posts[40]])->delete();
+        $this->getJson($url.'?latest=1')->assertOk()->assertJsonPath('page', 1)
+            ->assertJsonCount(40, 'posts')->assertJsonPath('posts.39.id', $posts[41])
+            ->assertJsonPath('target_post_id', $posts[41]);
+
+        $this->assertDenied($this->getJson('/api/threads/'.$privateThread.'?latest=1'));
+        $this->actingAs($owner)->getJson('/api/threads/'.$privateThread.'?latest=1')->assertOk()
+            ->assertJsonPath('page', 1)->assertJsonPath('target_post_id', $privatePost);
+        DB::table('posts')->where('id', $privatePost)->delete();
+        $this->getJson('/api/threads/'.$privateThread.'?latest=1')->assertOk()->assertJsonPath('page', 1)
+            ->assertJsonCount(0, 'posts')->assertJsonPath('target_post_id', null);
+    }
+
     /** Native Laravel HTTP/PDO qualification, not counted green on incomplete PHP. */
     public function test_demoted_moderator_with_stale_session_cannot_write_to_private_forum(): void
     {

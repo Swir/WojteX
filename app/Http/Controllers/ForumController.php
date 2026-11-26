@@ -14,7 +14,9 @@ use App\Services\PostEditQuery;
 use App\Services\PostDeleteQuery;
 use App\Services\ReactionToggleQuery;
 use App\Services\BookmarkToggleQuery;
+use Illuminate\Database\Query\Builder;
 use Illuminate\Http\Request;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Storage;
@@ -130,22 +132,29 @@ class ForumController extends Controller
             'page' => 'nullable|integer|min:1|max:100000',
             'post' => 'nullable|integer|min:1',
             'unread' => 'nullable|boolean',
+            'latest' => 'nullable|boolean',
         ]);
         $viewer = $request->user();
         $thread=Forum::thread($id,$viewer);
         $follow = $viewer ? ThreadFollows::status($id, (int) $viewer->id) : null;
         $postId = isset($data['post']) ? (int) $data['post']
             : ($request->boolean('unread') ? ($follow['first_unread_post_id'] ?? null) : null);
-        $page = isset($data['page']) ? (int) $data['page'] : null;
-        if ($postId !== null && $page === null) {
-            $page = $this->pageContainingPost($id, $postId);
-        }
         $query = DB::table('posts')->where('thread_id', $id)->orderBy('id');
-        $posts = $query->paginate(self::POSTS_PER_PAGE, ['*'], 'page', $page);
-        if ($postId !== null && !$posts->getCollection()->contains('id', $postId)) {
-            // A link with an older page number can outlive deleted replies.
-            $posts = $query->paginate(self::POSTS_PER_PAGE, ['*'], 'page', $this->pageContainingPost($id, $postId));
-            abort_unless($posts->getCollection()->contains('id', $postId), 404, __('server.post_unavailable'));
+        if ($postId === null && $request->boolean('latest')) {
+            $posts = $this->latestPostsPage($query);
+            $latest = $posts->getCollection()->last();
+            $postId = $latest ? (int) $latest->id : null;
+        } else {
+            $page = isset($data['page']) ? (int) $data['page'] : null;
+            if ($postId !== null && $page === null) {
+                $page = $this->pageContainingPost($id, $postId);
+            }
+            $posts = $query->paginate(self::POSTS_PER_PAGE, ['*'], 'page', $page);
+            if ($postId !== null && !$posts->getCollection()->contains('id', $postId)) {
+                // A link with an older page number can outlive deleted replies.
+                $posts = $query->paginate(self::POSTS_PER_PAGE, ['*'], 'page', $this->pageContainingPost($id, $postId));
+                abort_unless($posts->getCollection()->contains('id', $postId), 404, __('server.post_unavailable'));
+            }
         }
         // Count one view per topic per session, bounded to the latest 100 topic ids.
         $seen=$request->session()->get('viewed_threads',[]);
@@ -163,6 +172,17 @@ class ForumController extends Controller
             'follow' => $follow,
             'target_post_id' => $postId,
         ]);
+    }
+
+    private function latestPostsPage(Builder $query): LengthAwarePaginator
+    {
+        $total = $query->getCountForPagination();
+        $page = $total > 0 ? intdiv($total - 1, self::POSTS_PER_PAGE) + 1 : 1;
+        $size = $total - ($page - 1) * self::POSTS_PER_PAGE;
+        // Read the end of the thread's (thread_id, id) index instead of applying a deep OFFSET.
+        $rows = $query->reorder('id', 'desc')->limit($size)->get()->reverse()->values();
+
+        return new LengthAwarePaginator($rows, $total, self::POSTS_PER_PAGE, $page);
     }
 
     private function pageContainingPost(int $threadId, int $postId): int
