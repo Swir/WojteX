@@ -243,6 +243,10 @@ async function navigate() {
     const pendingRead = finishReadTracking();
     const token = ++state.viewToken;
     const route = routeInfo();
+    const focused = document.activeElement;
+    const followingFocus = route.name === 'following' && focused?.closest('.wx-follow-filters')
+        ? (focused.id === 'following-category' ? '#following-category' : '.wx-follow-filters nav [aria-current="page"]')
+        : null;
     state.route = route;
     state.thread = null;
     state.page = state.threadPage = Number(route.query.get('page')) || 1;
@@ -282,6 +286,7 @@ async function navigate() {
             view.setAttribute('aria-busy', 'false');
             paintIcons(view);
             startVisibleSidebar();
+            if (followingFocus) $(followingFocus, view)?.focus({preventScroll: true});
         }
     }
 }
@@ -370,12 +375,46 @@ function topicRow(topic) {
         </a>
     </article>`;
 }
+
+function followingFilters(categories, categoryId, unread) {
+    const url = (onlyUnread) => {
+        const params = new URLSearchParams();
+        if (categoryId) params.set('category', String(categoryId));
+        if (onlyUnread) params.set('unread', '1');
+        return '#/following' + (params.size ? '?' + params : '');
+    };
+    const names = new Map(categories.map(category => [category.id, category.name]));
+    const unavailable = categoryId && !names.has(categoryId);
+
+    return `<div class="wx-follow-filters">
+        ${categories.length || categoryId ? `<div class="wx-follow-category">
+            <label for="following-category">${tx('ui.topic.category')}</label>
+            <select id="following-category">
+                <option value="">${tx('ui.follow.all_categories')}</option>
+                ${unavailable ? `<option value="${categoryId}" disabled selected>${tx('ui.follow.category_unavailable')}</option>` : ''}
+                ${categories.map(category => {
+                    const parent = names.get(category.parent_id);
+                    const name = parent ? `${parent} / ${category.name}` : category.name;
+                    return `<option value="${Number(category.id)}"${category.id === categoryId ? ' selected' : ''}>${e(name)}</option>`;
+                }).join('')}
+            </select>
+        </div>` : ''}
+        <nav class="topic-tabs" aria-label="${tx('ui.follow.filter')}">
+            <a href="${e(url(false))}" class="topic-tab${unread ? '' : ' active'}"${unread ? '' : ' aria-current="page"'}>${icon('bell')}${tx('ui.follow.all')}</a>
+            <a href="${e(url(true))}" class="topic-tab${unread ? ' active' : ''}"${unread ? ' aria-current="page"' : ''}>${icon('spark')}${tx('ui.follow.unread')}</a>
+        </nav>
+    </div>`;
+}
+
 async function renderFeed(route, token) {
     const view = $('#view');
-    const category = (state.bootstrap.categories || []).find(item => item.id === route.id);
+    const categories = state.bootstrap.categories || [];
+    const category = categories.find(item => item.id === route.id);
     const term = route.query.get('q') || '';
     const following = route.name === 'following';
     const unread = following && route.query.get('unread') === '1';
+    const categoryParam = Number(route.query.get('category'));
+    const followedCategory = following && Number.isSafeInteger(categoryParam) && categoryParam > 0 ? categoryParam : null;
     const headings = {
         home: [state.bootstrap.settings?.site_name || 'WojteX Forum', state.bootstrap.settings?.tagline || tr('ui.feed.home_subtitle')],
         latest: [tr('ui.feed.latest_title'), tr('ui.feed.latest_subtitle')],
@@ -399,6 +438,7 @@ async function renderFeed(route, token) {
     if (route.name === 'search') query.set('q', term);
     if (route.name === 'saved') query.set('bookmarked', '1');
     if (following) query.set('following', '1');
+    if (followedCategory) query.set('category', String(followedCategory));
     if (unread) query.set('unread', '1');
     const results = await request('/api/threads?' + query);
     if (token !== state.viewToken) return;
@@ -415,8 +455,12 @@ async function renderFeed(route, token) {
     const noResults = {
         search: [tr('ui.feed.search_empty'), tr('ui.feed.search_empty_help'), 'search', `<button class="button button-secondary" data-action="quick-search">${tx('ui.quick_search.open')}</button>`],
         saved: [tr('ui.feed.collection_empty'), tr('ui.feed.collection_empty_help'), 'bookmark'],
-        following: unread
-            ? [tr('ui.follow.caught_up'), tr('ui.follow.caught_up_help'), 'check-circle']
+        following: followedCategory ? [
+            unread ? tr('ui.follow.caught_up') : tr('ui.follow.category_empty'),
+            unread ? tr('ui.follow.category_caught_up') : tr('ui.follow.category_empty_help'),
+            unread ? 'check-circle' : 'bell',
+            `<a class="button button-secondary" href="#/following${unread ? '?unread=1' : ''}">${tx('ui.follow.all_categories')}</a>`
+        ] : unread ? [tr('ui.follow.caught_up'), tr('ui.follow.caught_up_help'), 'check-circle']
             : [tr('ui.follow.empty'), tr('ui.follow.empty_help'), 'bell', `<a class="button button-secondary" href="#/latest">${tx('ui.nav.latest')}</a>`]
     };
     const firstTopic = [tr('ui.feed.first_discussion'), tr('ui.feed.first_help'), 'message', `<button class="button button-secondary" data-action="new-topic">${icon('plus')}${tx('ui.topic.create')}</button>`];
@@ -426,10 +470,7 @@ async function renderFeed(route, token) {
         ['unanswered', 'message', tx('ui.feed.unanswered')]
     ];
     const controls = following
-        ? `<nav class="topic-tabs" aria-label="${tx('ui.follow.filter')}">
-            <a href="#/following" class="topic-tab${unread ? '' : ' active'}"${unread ? '' : ' aria-current="page"'}>${icon('bell')}${tx('ui.follow.all')}</a>
-            <a href="#/following?unread=1" class="topic-tab${unread ? ' active' : ''}"${unread ? ' aria-current="page"' : ''}>${icon('spark')}${tx('ui.follow.unread')}</a>
-        </nav>`
+        ? followingFilters(categories, followedCategory, unread)
         : `<div class="topic-tabs" role="group" aria-label="${tx('ui.feed.sort_label')}">
             ${sorting.map(([value, symbol, label]) => `<button type="button" class="topic-tab ${state.sort === value ? 'active' : ''}" aria-pressed="${state.sort === value}" data-action="sort" data-sort="${value}">${icon(symbol)}${label}</button>`).join('')}
         </div>`;
@@ -1204,6 +1245,11 @@ window.addEventListener('pagehide', () => {
 });
 document.addEventListener('input', queueDraft);
 document.addEventListener('change', queueDraft);
+document.addEventListener('change', event => {
+    if (event.target.id === 'following-category') {
+        updateRouteQuery({category: event.target.value || null, page: null});
+    }
+});
 dialog.addEventListener('click',event=>{if(event.target===dialog){const r=dialog.getBoundingClientRect();if(event.clientX<r.left||event.clientX>r.right||event.clientY<r.top||event.clientY>r.bottom)closeDialog();}});
 document.addEventListener('keydown', event => {
     if (event.defaultPrevented || event.isComposing) return;

@@ -703,6 +703,35 @@ class ForumSecurityTest extends TestCase
         $this->getJson('/api/threads/'.$thread.'?unread=1')->assertOk()->assertJsonPath('target_post_id', $newReply);
     }
 
+    public function test_followed_category_filter_combines_with_unread_and_requires_current_access(): void
+    {
+        $author = $this->user();
+        $reader = $this->user();
+        $firstCategory = $this->category();
+        $secondCategory = $this->category();
+        [$first] = $this->thread($author, $firstCategory);
+        [$second] = $this->thread($author, $secondCategory, 'Second followed topic');
+        [$unfollowed] = $this->thread($author, $firstCategory, 'Unfollowed topic');
+
+        $this->actingAs($reader)->putJson('/api/threads/'.$first.'/follow')->assertOk();
+        $this->putJson('/api/threads/'.$second.'/follow')->assertOk();
+        $this->makePost($author, $first, 'New reply in the selected category');
+        $this->makePost($author, $unfollowed, 'New reply in an unfollowed topic');
+
+        $this->getJson('/api/threads?following=1&category='.$firstCategory)->assertOk()
+            ->assertJsonPath('total', 1)->assertJsonPath('data.0.id', $first);
+        $this->getJson('/api/threads?following=1&unread=1&category='.$firstCategory)->assertOk()
+            ->assertJsonPath('total', 1)->assertJsonPath('data.0.id', $first);
+        $this->getJson('/api/threads?following=1&category='.$secondCategory)->assertOk()
+            ->assertJsonPath('total', 1)->assertJsonPath('data.0.id', $second);
+        $this->getJson('/api/threads?following=1&unread=1&category='.$secondCategory)->assertOk()
+            ->assertJsonPath('total', 0)->assertJsonCount(0, 'data');
+
+        DB::table('categories')->where('id', $firstCategory)->update(['is_private' => true]);
+        $this->getJson('/api/threads?following=1&unread=1&category='.$firstCategory)->assertOk()
+            ->assertJsonPath('total', 0)->assertJsonCount(0, 'data');
+    }
+
     public function test_rendered_markdown_rejects_script_html_event_handlers_and_javascript_urls(): void
     {
         $author = $this->user();
