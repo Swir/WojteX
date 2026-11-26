@@ -666,7 +666,41 @@ class ForumSecurityTest extends TestCase
         $this->getJson('/api/threads/'.$thread.'?unread=1')->assertNotFound();
         $this->putJson($follow)->assertNotFound();
         $this->putJson($follow.'/read', ['post_id' => $newPost])->assertNotFound();
+        $this->putJson($follow.'/read-all')->assertNotFound();
         $this->deleteJson($follow)->assertNotFound();
+    }
+
+    public function test_marking_a_followed_topic_read_is_scoped_to_the_current_account_and_topic(): void
+    {
+        $author = $this->user();
+        $reader = $this->user();
+        $otherReader = $this->user();
+        $category = $this->category();
+        [$thread] = $this->thread($author, $category);
+        [$second] = $this->thread($author, $category, 'Second followed discussion');
+        $follow = '/api/threads/'.$thread.'/follow';
+        $mark = $follow.'/read-all';
+
+        $this->putJson($mark)->assertUnauthorized();
+        $this->actingAs($reader)->putJson($mark)->assertOk()->assertExactJson(['follow' => null]);
+        $this->putJson($follow)->assertOk();
+        $this->putJson('/api/threads/'.$second.'/follow')->assertOk();
+        $this->actingAs($otherReader)->putJson($follow)->assertOk();
+
+        $unread = $this->makePost($author, $thread, 'New reply in the first topic');
+        $last = $this->makePost($author, $thread, 'Another new reply');
+        $this->makePost($author, $second, 'New reply in the second topic');
+
+        $this->actingAs($reader)->putJson($mark)->assertOk()
+            ->assertJsonPath('follow.last_read_post_id', $last)->assertJsonPath('follow.first_unread_post_id', null);
+        $this->getJson('/api/threads?unread=1')->assertOk()->assertJsonCount(1, 'data')->assertJsonPath('data.0.id', $second);
+        $this->actingAs($otherReader)->getJson('/api/threads?unread=1')->assertOk()
+            ->assertJsonCount(1, 'data')->assertJsonPath('data.0.first_unread_post_id', $unread);
+
+        DB::table('posts')->where('id', $last)->delete();
+        $this->actingAs($reader)->putJson($mark)->assertOk()->assertJsonPath('follow.last_read_post_id', $last);
+        $newReply = $this->makePost($author, $thread, 'Reply received after marking');
+        $this->getJson('/api/threads/'.$thread.'?unread=1')->assertOk()->assertJsonPath('target_post_id', $newReply);
     }
 
     public function test_rendered_markdown_rejects_script_html_event_handlers_and_javascript_urls(): void

@@ -26,6 +26,7 @@ expected = {
     ('PUT', 'api/threads/{id}/follow'),
     ('DELETE', 'api/threads/{id}/follow'),
     ('PUT', 'api/threads/{id}/follow/read'),
+    ('PUT', 'api/threads/{id}/follow/read-all'),
     ('PATCH', 'api/posts/{id}'),
     ('DELETE', 'api/posts/{id}'),
     ('POST', 'api/posts/{id}/reaction'),

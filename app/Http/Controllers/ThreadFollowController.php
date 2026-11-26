@@ -49,6 +49,20 @@ class ThreadFollowController extends Controller
         return response()->json(['follow' => ThreadFollows::status($id, $viewerId)]);
     }
 
+    public function readAll(Request $request, int $id): JsonResponse
+    {
+        $this->visibleThread($request, $id);
+        $viewerId = (int) $request->user()->id;
+        $latest = DB::table('posts')->where('thread_id', $id)->selectRaw('MAX(id)');
+
+        // Set the watermark from the posts visible to this statement. A later
+        // reply still counts as unread, and deleting posts cannot rewind it.
+        ThreadFollows::writableFollow($id, $viewerId)->where('last_read_post_id', '<', $latest)
+            ->update(['last_read_post_id' => $latest]);
+
+        return response()->json(['follow' => ThreadFollows::status($id, $viewerId)]);
+    }
+
     private function visibleThread(Request $request, int $id): Builder
     {
         $thread = Forum::visibleThreads($request->user())->where('t.id', $id);

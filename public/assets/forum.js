@@ -363,6 +363,7 @@ function topicRow(topic) {
                 <time title="${e(dateTitle(timestamp))}">${e(relative(timestamp))}</time>
                 ${topic.bookmarked ? `<span title="${tx('ui.topic.saved_title')}">${icon('bookmark')}</span>` : ''}
             </div>
+            ${topic.first_unread_post_id ? `<button type="button" class="text-button wx-mark-thread-read" data-action="mark-thread-read" data-id="${Number(topic.id)}" aria-label="${tx('ui.follow.mark_read_label', {title: topic.title})}">${icon('check-circle')}${tx('ui.follow.mark_read')}</button>` : ''}
         </div>
         <a href="${url}" class="topic-stats" aria-label="${e(counted(topic.replies_count, 'replies'))}, ${e(counted(topic.views, 'views'))}">
             <span>${icon('message')}${compact(topic.replies_count)}</span><span class="stat-views">${icon('eye')}${compact(topic.views)}</span>
@@ -401,6 +402,10 @@ async function renderFeed(route, token) {
     if (unread) query.set('unread', '1');
     const results = await request('/api/threads?' + query);
     if (token !== state.viewToken) return;
+    if (following && results.current_page > results.last_page) {
+        updateRouteQuery({page: results.last_page > 1 ? results.last_page : null});
+        return;
+    }
 
     const headingsByFeed = {
         search: tr('ui.feed.search_results'),
@@ -1069,6 +1074,21 @@ case 'retry-view':await navigate();break;
 case 'retry-bootstrap':await init();break;
 case 'refresh-shouts':await refreshShouts(true);break;
 case 'bookmark':if(ensureAuth()){const r=await request(`/api/threads/${id}/bookmark`,{method:'POST'});button.classList.toggle('button-primary',r.bookmarked);button.classList.toggle('button-secondary',!r.bookmarked);button.innerHTML=icon('bookmark')+e(r.bookmarked?tr('ui.topic.saved'):tr('ui.topic.save'));if(state.thread)state.thread.thread.bookmarked=r.bookmarked;toast(r.bookmarked?tr('ui.topic.saved_to_collection'):tr('ui.topic.removed_from_saved'));}break;
+case 'mark-thread-read': {
+    const hash = location.hash;
+    await request(`/api/threads/${id}/follow/read-all`, {method: 'PUT'});
+    toast(tr('ui.follow.marked_read'));
+    if (hash !== location.hash) break;
+
+    const listVersion = state.viewToken + 1;
+    await navigate();
+    if (state.viewToken === listVersion) {
+        const next = $(`#forum-list .topic-title[href="#/thread/${id}"]`)
+            || $('#forum-list [data-action="mark-thread-read"]') || $('#forum-list nav [aria-current="page"]');
+        next?.focus({preventScroll: true});
+    }
+    break;
+}
 case 'follow-thread': {
     if (!ensureAuth()) break;
     const detail = state.thread;
