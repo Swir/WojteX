@@ -61,4 +61,46 @@ class PrivateMessageReadReceiptLiveTest extends TestCase
         $this->patchJson('/api/messages/'.$id.'/read')->assertNotFound();
         $this->assertNull(DB::table('private_messages')->where('id',$id)->value('read_at'));
     }
+
+    public function test_mark_all_reads_only_visible_incoming_messages_through_the_loaded_cutoff(): void
+    {
+        $sender = $this->account('Sender');
+        $recipient = $this->account('Recipient');
+        $other = $this->account('Other');
+        $send = fn (User $from, User $to, array $attributes = []) => DB::table('private_messages')->insertGetId([
+            ...$attributes,
+            'sender_id' => $from->id, 'recipient_id' => $to->id, 'body' => 'Synthetic message',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $read = $send($sender, $recipient, ['read_at' => '2026-01-02 03:04:05']);
+        $outgoing = $send($recipient, $sender);
+        $unrelated = $send($sender, $other);
+        $hidden = $send($sender, $recipient, ['recipient_hidden_at' => now()]);
+        foreach (range(1, 31) as $i) {
+            $send($sender, $recipient);
+        }
+        $hiddenAfterLoad = $send($sender, $recipient);
+
+        $this->putJson('/api/messages/read-all', ['through_id' => $hiddenAfterLoad])->assertUnauthorized();
+        $this->actingAs($recipient);
+        $snapshot = $this->getJson('/api/messages?folder=unread&page=2')->assertOk()->assertJsonCount(2, 'data')
+            ->assertJsonPath('unread', 32)->assertJsonPath('unread_through_id', $hiddenAfterLoad);
+        $data = ['through_id' => $snapshot->json('unread_through_id')];
+        $this->putJson('/api/messages/read-all', ['through_id' => 0])->assertUnprocessable()->assertJsonValidationErrors('through_id');
+
+        $this->deleteJson('/api/messages/'.$hiddenAfterLoad)->assertOk();
+        $new = $send($sender, $recipient);
+        $this->putJson('/api/messages/read-all', $data)->assertOk()->assertExactJson(['marked' => 31]);
+        $this->putJson('/api/messages/read-all', $data)->assertOk()->assertExactJson(['marked' => 0]);
+        $this->assertDatabaseHas('private_messages', ['id' => $read, 'read_at' => '2026-01-02 03:04:05']);
+        foreach ([$outgoing, $unrelated, $hidden, $hiddenAfterLoad, $new] as $unread) {
+            $this->assertDatabaseHas('private_messages', ['id' => $unread, 'read_at' => null]);
+        }
+        $this->getJson('/api/messages?folder=unread')->assertOk()->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id', $new)->assertJsonPath('unread', 1)->assertJsonPath('unread_through_id', $new);
+
+        DB::table('users')->where('id', $recipient->id)->update(['is_banned' => true]);
+        $this->putJson('/api/messages/read-all', ['through_id' => $new])->assertForbidden();
+        $this->assertDatabaseHas('private_messages', ['id' => $new, 'read_at' => null]);
+    }
 }

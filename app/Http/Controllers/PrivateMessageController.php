@@ -35,10 +35,9 @@ class PrivateMessageController extends Controller
         $visible = DB::table('private_messages')->where(fn ($q) => $q
             ->where(fn ($sender) => $sender->where('sender_id', $id)->whereNull('sender_hidden_at'))
             ->orWhere(fn ($recipient) => $recipient->where('recipient_id', $id)->whereNull('recipient_hidden_at')));
-        $received = DB::table('private_messages')->where('recipient_id', $id)->whereNull('recipient_hidden_at');
-        $unread = (clone $received)->whereNull('read_at');
+        $unread = PrivateMessageReadReceiptQuery::unread($id);
         $query = match ($data['folder'] ?? 'all') {
-            'received' => $received,
+            'received' => PrivateMessageReadReceiptQuery::received($id),
             'unread' => clone $unread,
             'sent' => DB::table('private_messages')->where('sender_id', $id)->whereNull('sender_hidden_at'),
             default => $visible,
@@ -64,11 +63,13 @@ class PrivateMessageController extends Controller
                 'outgoing' => (int) $m->sender_id === $id,
             ];
         })->values();
+        $unreadSummary = $unread->selectRaw('COUNT(*) AS total, MAX(id) AS through_id')->first();
         return response()->json([
             'data' => $data,
             'current_page' => $messages->currentPage(),
             'last_page' => $messages->lastPage(),
-            'unread' => $unread->count(),
+            'unread' => (int) $unreadSummary->total,
+            'unread_through_id' => $unreadSummary->through_id === null ? null : (int) $unreadSummary->through_id,
         ]);
     }
 
@@ -273,6 +274,21 @@ class PrivateMessageController extends Controller
                 404, __('server.messages_not_found'));
         }
         return response()->json(['ok' => true]);
+    }
+
+    public function markAllRead(Request $request): JsonResponse
+    {
+        $viewer = $this->allowAccount($request);
+        $data = $request->validate(['through_id' => 'required|integer|min:1']);
+        $time = now();
+        $updated = PrivateMessageReadReceiptQuery::eligibleThrough($viewer, (int) $data['through_id'])
+            ->update(['read_at' => $time, 'updated_at' => $time]);
+
+        if ($updated === 0) {
+            abort_unless(PrivateMessageReadReceiptQuery::activeRecipient($viewer)->exists(),
+                403, __('server.messages_banned'));
+        }
+        return response()->json(['marked' => $updated]);
     }
 
     /** Hide a message from this participant's mailbox; never delete the other's copy. */

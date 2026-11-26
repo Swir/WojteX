@@ -860,8 +860,14 @@ async function renderPrivateMessages(route, token) {
         received: tr('ui.messages.received_empty'),
         sent: tr('ui.messages.sent_empty'),
     };
+    const throughId = Number(result.unread_through_id);
+    const markAll = (folder === 'all' || folder === 'unread') && Number.isSafeInteger(throughId) && throughId > 0;
     $('[data-mailbox-content]', view).innerHTML = `
-        <section class="panel private-message-inbox"><div class="discussion-toolbar"><h2>${tx('ui.messages.mailbox')}</h2></div>
+        <section class="panel private-message-inbox">
+            <div class="discussion-toolbar wx-mailbox-heading">
+                <h2>${tx('ui.messages.mailbox')}</h2>
+                ${markAll ? `<button type="button" class="button button-secondary" data-action="message-read-all" data-through-id="${throughId}">${icon('check-circle')}${tx('ui.messages.mark_all_read')}</button>` : ''}
+            </div>
             <nav class="wx-mailbox-nav topic-tabs" aria-label="${tx('ui.messages.folders')}">
                 ${folders.map(([value, symbol, label]) => `<a class="topic-tab${value === folder ? ' active' : ''}" href="${mailboxUrl(value)}"${value === folder ? ' aria-current="page"' : ''}>${icon(symbol)}${label}</a>`).join('')}
             </nav>
@@ -1342,6 +1348,26 @@ case 'message-read':
         ($('[data-action="message-read"]') || $('.wx-mailbox-nav [aria-current="page"]'))?.focus({preventScroll: true});
     }
     break;
+case 'message-read-all': {
+    const account = state.user?.id;
+    const hash = location.hash;
+    const result = await request('/api/messages/read-all', {method: 'PUT', body: {through_id: Number(button.dataset.throughId)}});
+    if (state.user?.id !== account) break;
+    toast(tr(result.marked ? 'ui.messages.marked_all_read' : 'ui.messages.already_read'));
+    const route = routeInfo();
+    if (route.name === 'messages') {
+        const sameView = hash === location.hash;
+        if (sameView && route.query.get('folder') === 'unread' && route.query.has('page')) {
+            history.replaceState(null, '', mailboxUrl('unread'));
+        }
+        const refreshedHash = location.hash;
+        await navigate();
+        if (sameView && location.hash === refreshedHash) {
+            ($('[data-action="message-read-all"]') || $('.wx-mailbox-nav [aria-current="page"]'))?.focus();
+        }
+    }
+    break;
+}
 case 'message-hide':confirmModal(tr('ui.messages.hide_title'),tr('ui.messages.hide_confirm'),tr('ui.messages.hide'),async()=>{await request(`/api/messages/${id}`,{method:'DELETE'});closeDialog();await navigate();toast(tr('ui.messages.hidden_notice'));});break;
 case 'retry-view':await navigate();break;
 case 'retry-bootstrap':await init();break;

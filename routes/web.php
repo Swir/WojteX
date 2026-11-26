@@ -51,6 +51,7 @@ Route::middleware('installed')->group(function(){
                 Route::get('/messages/recipients',[PrivateMessageController::class,'recipients'])->middleware('throttle:30,1');
                 Route::get('/messages',[PrivateMessageController::class,'index']);
                 Route::post('/messages',[PrivateMessageController::class,'send'])->middleware('throttle:10,1');
+                Route::put('/messages/read-all',[PrivateMessageController::class,'markAllRead'])->middleware('throttle:30,1,pm-read-all');
                 Route::post('/messages/{id}/report',[PrivateMessageController::class,'report'])->whereNumber('id')->middleware('throttle:5,1');
                 Route::patch('/messages/{id}/read',[PrivateMessageController::class,'markRead'])->whereNumber('id');
                 Route::delete('/messages/{id}',[PrivateMessageController::class,'hide'])->whereNumber('id');

@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Mark unread private messages across all mailbox pages in one action. Messages newer than the last mailbox refresh stay unread.
 - Reply from a received private message or write again from a sent message. The recipient is preselected and the main composer keeps its draft.
 - Filter private messages by unread, received or sent. Switching folders keeps the message you are composing.
 - Search topic titles and posts in your bookmarks, and narrow the results by category. The filters stay in the address when sorting or paging through the collection.

@@ -20,6 +20,7 @@ expected = {
     ('POST', 'api/messages/blocks'),
     ('DELETE', 'api/messages/blocks/{id}'),
     ('GET|HEAD', 'api/messages/recipients'),
+    ('PUT', 'api/messages/read-all'),
     ('DELETE', 'api/messages/{id}'),
     ('PATCH', 'api/messages/{id}/read'),
     ('POST', 'api/messages/{id}/report'),
