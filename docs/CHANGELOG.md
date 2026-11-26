@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- See a selected attachment’s name and size, remove it before sending, and catch unsupported extensions or files over 5 MiB before publishing.
 - Mark unread private messages across all mailbox pages in one action. Messages newer than the last mailbox refresh stay unread.
 - Reply from a received private message or write again from a sent message. The recipient is preselected and the main composer keeps its draft.
 - Filter private messages by unread, received or sent. Switching folders keeps the message you are composing.

@@ -1026,7 +1026,7 @@ function discardDraft(form) {
     setEditorPreview(form.elements.body.closest('.editor'), false);
     form.elements.body.value = '';
     if (form.elements.title) form.elements.title.value = '';
-    if (form.elements.attachment) form.elements.attachment.value = '';
+    if (form.elements.attachment) clearPostAttachment(form.elements.attachment);
     showDraftStatus(form, 'discarded');
     form.elements.body.focus();
 }
@@ -1216,9 +1216,61 @@ function resetPasswordModal(route){
     modal(tr('ui.auth.reset_title'),tr('ui.auth.reset_subtitle'),`<form data-form="reset-password"><div class="form-error" role="alert"></div><input type="hidden" name="token" value="${e(token)}"><label class="field"><span>${tx('ui.auth.email')}</span><input type="email" name="email" required autocomplete="email" maxlength="254" value="${e(email)}"></label><label class="field"><span>${tx('ui.auth.password')}</span><input type="password" name="password" required minlength="12" maxlength="128" autocomplete="new-password" placeholder="${tx('ui.auth.password_min')}"></label><label class="field"><span>${tx('ui.auth.repeat_password')}</span><input type="password" name="password_confirmation" required minlength="12" maxlength="128" autocomplete="new-password"></label><button type="submit" class="button button-primary button-wide">${tx('ui.auth.reset_submit')}${icon('arrow-right')}</button></form><div class="auth-switch"><button data-action="login">${tx('ui.auth.back_to_login')}</button></div>`,false,'lock');
 }
 function accountModal(){if(!state.user)return authModal();modal(state.user.name,tr('ui.auth.account_subtitle'),`<a class="button button-secondary button-wide" data-action="close-on-nav" href="#/profile">${icon('user')}${tx('ui.profile.edit')}</a>${state.user.role==='admin'?`<a class="button button-secondary button-wide" data-action="close-on-nav" href="#/admin" style="margin-top:10px">${icon('settings')}${tx('ui.nav.admin')}</a>`:''}<button class="button button-ghost button-wide" data-action="logout" style="margin-top:10px">${icon('logout')}${tx('ui.auth.sign_out')}</button>`,false,'user');}
-function newTopicModal(){if(!ensureAuth())return;const categories=(state.bootstrap.categories||[]).filter(c=>c.can_create!==false);if(!categories.length){toast(tr('ui.compose.no_category'),true);return;}const selected=state.route?.name==='category'?state.route.id:state.thread?.thread?.category_id;modal(tr('ui.topic.new'),tr('ui.compose.subtitle'),`<form data-form="new-topic"><div class="form-error" role="alert"></div><label class="field"><span>${tx('ui.compose.topic_title')}</span><input name="title" placeholder="${tx('ui.compose.topic_placeholder')}" required minlength="5" maxlength="180"></label><label class="field"><span>${tx('ui.compose.space')}</span><select name="category_id" required>${categories.map(c=>`<option value="${Number(c.id)}" ${selected===c.id?'selected':''}>${e(c.name)}${e(c.is_private?tr('ui.common.private_suffix'):'')}</option>`).join('')}</select></label><div class="field"><span>${tx('ui.compose.message')}</span>${editor('body','',tr('ui.compose.body_placeholder'))}</div>${draftControls()}<p class="composer-note">${tx('ui.post.markdown_help')}</p><details class="composer-attachment"><summary>${icon('paperclip')}${tx('ui.post.attachment')} · ${tx('ui.common.optional')}</summary><label class="field"><span>${tx('ui.post.attachment')}</span><input type="file" name="attachment" accept=".png,.jpg,.jpeg,.gif,.webp,.pdf,.txt,.zip"><small>${tx('ui.compose.file_help')}</small><small>${tx('ui.drafts.file_help')}</small></label></details><div class="form-footer"><button type="button" class="button button-ghost" data-action="close-dialog">${tx('ui.common.cancel')}</button><button type="submit" class="button button-primary">${tx('ui.compose.publish')}${icon('arrow-right')}</button></div></form>`,true);bindDraft($('[data-form="new-topic"]',dialog));}
+
+const postAttachmentExtensions = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.pdf', '.txt', '.zip'];
+const maxPostAttachmentSize = 5 * 1024 * 1024;
+
+function postAttachmentPicker(name, required = false) {
+    const hintId = `attachment-${name}-hint`;
+    const errorId = `attachment-${name}-error`;
+    return `<div class="wx-attachment-picker">
+        <label class="field">
+            <span>${tx(required ? 'ui.common.choose_file' : 'ui.post.attachment')}</span>
+            <input type="file" name="${name}" accept="${postAttachmentExtensions.join(',')}" ${required ? 'required ' : ''}data-post-attachment aria-describedby="${hintId} ${errorId}">
+            <small id="${hintId}">${tx(required ? 'ui.attachment.limits' : 'ui.compose.file_help')}</small>
+            ${required ? '' : `<small>${tx('ui.drafts.file_help')}</small>`}
+        </label>
+        <div class="wx-attachment-selection">
+            <p data-attachment-file role="status"></p>
+            <button type="button" class="button button-small button-ghost" data-action="clear-post-attachment" hidden>${tx('ui.attachment.clear_selection')}</button>
+        </div>
+        <p id="${errorId}" data-attachment-error role="alert"></p>
+    </div>`;
+}
+
+function updatePostAttachment(input) {
+    const picker = input.closest('.wx-attachment-picker');
+    const file = input.files[0];
+    const summary = $('[data-attachment-file]', picker);
+    const feedback = $('[data-attachment-error]', picker);
+    let label = '';
+    let error = '';
+    if (file) {
+        const extension = file.name.match(/\.[^.]+$/)?.[0].toLowerCase();
+        if (!postAttachmentExtensions.includes(extension)) error = tr('ui.attachment.invalid_type');
+        else if (file.size > maxPostAttachmentSize) error = tr('ui.attachment.invalid_size');
+
+        const [unit, divisor] = file.size >= 1024 * 1024 ? ['MiB', 1024 * 1024]
+            : file.size >= 1024 ? ['KiB', 1024] : ['B', 1];
+        const amount = new Intl.NumberFormat(activeLocale(), {maximumFractionDigits: 1}).format(file.size / divisor);
+        label = tr('ui.attachment.selection', {name: file.name, size: `${amount} ${unit}`});
+    }
+    if (summary.textContent !== label) summary.textContent = label;
+    if (feedback.textContent !== error) feedback.textContent = error;
+    $('[data-action="clear-post-attachment"]', picker).hidden = !file;
+    if (error) input.setAttribute('aria-invalid', 'true');
+    else input.removeAttribute('aria-invalid');
+    input.setCustomValidity(error);
+    return !error;
+}
+
+function clearPostAttachment(input) {
+    input.value = '';
+    updatePostAttachment(input);
+}
+function newTopicModal(){if(!ensureAuth())return;const categories=(state.bootstrap.categories||[]).filter(c=>c.can_create!==false);if(!categories.length){toast(tr('ui.compose.no_category'),true);return;}const selected=state.route?.name==='category'?state.route.id:state.thread?.thread?.category_id;modal(tr('ui.topic.new'),tr('ui.compose.subtitle'),`<form data-form="new-topic"><div class="form-error" role="alert"></div><label class="field"><span>${tx('ui.compose.topic_title')}</span><input name="title" placeholder="${tx('ui.compose.topic_placeholder')}" required minlength="5" maxlength="180"></label><label class="field"><span>${tx('ui.compose.space')}</span><select name="category_id" required>${categories.map(c=>`<option value="${Number(c.id)}" ${selected===c.id?'selected':''}>${e(c.name)}${e(c.is_private?tr('ui.common.private_suffix'):'')}</option>`).join('')}</select></label><div class="field"><span>${tx('ui.compose.message')}</span>${editor('body','',tr('ui.compose.body_placeholder'))}</div>${draftControls()}<p class="composer-note">${tx('ui.post.markdown_help')}</p><details class="composer-attachment"><summary>${icon('paperclip')}${tx('ui.post.attachment')} · ${tx('ui.common.optional')}</summary>${postAttachmentPicker('attachment')}</details><div class="form-footer"><button type="button" class="button button-ghost" data-action="close-dialog">${tx('ui.common.cancel')}</button><button type="submit" class="button button-primary">${tx('ui.compose.publish')}${icon('arrow-right')}</button></div></form>`,true);bindDraft($('[data-form="new-topic"]',dialog));}
 function editPostModal(id){const p=state.thread?.posts?.find(p=>p.id===id);if(!p)return;modal(tr('ui.compose.edit_title'),tr('ui.compose.edit_subtitle'),`<form data-form="edit-post" data-id="${id}"><div class="form-error" role="alert"></div>${editor('body',p.body,tr('ui.compose.edit_placeholder'),p.body_format||'markdown')}<div class="form-footer"><button class="button button-ghost" type="button" data-action="close-dialog">${tx('ui.common.cancel')}</button><button class="button button-primary" type="submit">${tx('ui.common.save_changes')}</button></div></form>`,true);}
-function attachmentModal(id){modal(tr('ui.attachment.title'),tr('ui.attachment.subtitle'),`<form data-form="attachment" data-id="${id}"><div class="form-error" role="alert"></div><label class="field"><span>${tx('ui.common.choose_file')}</span><input type="file" name="file" required accept=".png,.jpg,.jpeg,.gif,.webp,.pdf,.txt,.zip"><small>${tx('ui.attachment.limits')}</small></label><div class="form-footer"><button type="submit" class="button button-primary">${icon('upload')}${tx('ui.common.upload_file')}</button></div></form>`,false,'paperclip');}
+function attachmentModal(id){modal(tr('ui.attachment.title'),tr('ui.attachment.subtitle'),`<form data-form="attachment" data-id="${id}"><div class="form-error" role="alert"></div>${postAttachmentPicker('file', true)}<div class="form-footer"><button type="submit" class="button button-primary">${icon('upload')}${tx('ui.common.upload_file')}</button></div></form>`,false,'paperclip');}
 function categoryModal(id=null){const c=(state.admin?.categories||state.bootstrap.categories||[]).find(c=>c.id===id)||{name:'',description:'',color:'violet',icon:'code',is_private:false,parent_id:null};const optionIcons={code:tr('ui.category.icon_code'),game:tr('ui.category.icon_games'),star:tr('ui.category.icon_ideas'),rocket:tr('ui.category.icon_projects'),chat:tr('ui.category.icon_chat'),folder:tr('ui.category.icon_folder'),shield:tr('ui.category.icon_admin'),book:tr('ui.category.icon_guides'),help:tr('ui.category.icon_help'),terminal:tr('ui.category.icon_terminal')};modal(id?tr('ui.category.edit_title'):tr('ui.category.new_title'),tr('ui.category.subtitle'),`<form data-form="category" ${id?`data-id="${id}"`:''}><div class="form-error" role="alert"></div><label class="field"><span>${tx('ui.category.name')}</span><input name="name" required minlength="2" maxlength="120" value="${e(c.name)}"></label><label class="field"><span>${tx('ui.category.description')}</span><textarea name="description" maxlength="500">${e(c.description)}</textarea></label><div class="form-row"><label class="field"><span>${tx('ui.category.color')}</span><select name="color">${['violet','cyan','blue','green','amber','rose'].map(k=>`<option value="${k}" ${c.color===k?'selected':''}>${e(({violet:tr('ui.category.violet'),cyan:tr('ui.category.cyan'),blue:tr('ui.category.blue'),green:tr('ui.category.green'),amber:tr('ui.category.amber'),rose:tr('ui.category.rose'),slate:tr('ui.category.slate')})[k])}</option>`).join('')}</select></label><label class="field"><span>${tx('ui.category.icon')}</span><select name="icon">${Object.entries(optionIcons).map(([k,v])=>`<option value="${k}" ${c.icon===k?'selected':''}>${e(v)}</option>`).join('')}</select></label></div><label class="checkbox-field"><input name="is_private" type="checkbox" ${c.is_private?'checked':''}><span>${tx('ui.category.private')}</span></label><div class="form-footer"><button class="button button-primary" type="submit">${icon('check')}${e(id?tr('ui.common.save_changes'):tr('ui.category.create'))}</button></div></form>`,false,'layers');}
 function confirmModal(title,text,buttonLabel,callback,danger=true){state.confirmAction=callback;modal(title,text,`<form data-form="confirm"><div class="form-error" role="alert"></div><div class="form-footer"><button type="button" class="button button-ghost" data-action="close-dialog">${tx('ui.common.cancel')}</button><button type="submit" class="button ${danger?'button-danger':'button-primary'}">${e(buttonLabel)}</button></div></form>`,false,danger?'alert':'info');}
 function setSidebarOpen(open) {
@@ -1413,6 +1465,12 @@ case 'quote':{if(!ensureAuth())break;const p=state.thread?.posts?.find(p=>p.id==
 case 'focus-reply':if(ensureAuth()){const field=$('#reply-panel textarea');if(field){setEditorPreview(field.closest('.editor'),false);field.focus({preventScroll:true});field.scrollIntoView({behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth',block:'center'});}}break;
 case 'edit-post':editPostModal(id);break;
 case 'attach-post':attachmentModal(id);break;
+case 'clear-post-attachment': {
+    const input = $('[data-post-attachment]', button.closest('.wx-attachment-picker'));
+    clearPostAttachment(input);
+    input.focus();
+    break;
+}
 case 'delete-post':confirmModal(tr('ui.post.delete_title'),tr('ui.post.delete_body'),tr('ui.post.delete_button'),async()=>{await request(`/api/posts/${id}`,{method:'DELETE'});closeDialog();await navigate();toast(tr('ui.post.deleted'));});break;
 case 'toggle-lock':await request(`/api/threads/${id}`,{method:'PATCH',body:{is_locked:!state.thread.thread.is_locked}});await navigate();toast(tr('ui.topic.replies_changed'));break;
 case 'toggle-pin':await request(`/api/threads/${id}`,{method:'PATCH',body:{is_pinned:!state.thread.thread.is_pinned}});await navigate();toast(tr('ui.topic.pin_changed'));break;
@@ -1434,7 +1492,7 @@ case 'edit-category':categoryModal(id);break;
 case 'category-visibility':{const c=(state.admin.categories||state.bootstrap.categories).find(c=>c.id===id);const makePublic=!!c.is_private;confirmModal(makePublic?tr('ui.admin.public_title'):tr('ui.admin.private_title'),makePublic?tr('ui.admin.public_body',{name:c.name}):tr('ui.admin.private_body',{name:c.name}),makePublic?tr('ui.admin.make_public'):tr('ui.admin.make_private'),async()=>{await request(`/api/admin/categories/${id}`,{method:'PATCH',body:{is_private:!c.is_private}});closeDialog();await loadBootstrap();await refreshAdmin();toast(tr('ui.admin.visibility_saved'));},false);}break;
 }}
 
-document.addEventListener('click',async event=>{const button=event.target.closest('[data-action]');if(!button||button.disabled)return;if(button.tagName!=='A')event.preventDefault();if(button.dataset.busy==='1')return;const immediate=['toggle-menu','appearance','reset-appearance','login','register','account','close-dialog','close-on-nav','new-topic','discard-draft','overwrite-draft','quick-search','sort','page','quote','edit-post','attach-post','delete-post','delete-thread','delete-shout','format','editor-preview','message-reply','admin-tab','ban-user','group-delete','new-category','edit-category','category-visibility'];const busy=!immediate.includes(button.dataset.action);try{if(busy){button.dataset.busy='1';button.setAttribute('aria-busy','true');button.disabled=true;}await handleAction(button);}catch(err){toast(err.message,true);if(err.status===401){state.user=null;authModal('login');}}finally{if(busy){button.dataset.busy='0';button.removeAttribute('aria-busy');button.disabled=false;}}});
+document.addEventListener('click',async event=>{const button=event.target.closest('[data-action]');if(!button||button.disabled)return;if(button.tagName!=='A')event.preventDefault();if(button.dataset.busy==='1')return;const immediate=['toggle-menu','appearance','reset-appearance','login','register','account','close-dialog','close-on-nav','new-topic','discard-draft','overwrite-draft','quick-search','sort','page','quote','edit-post','attach-post','clear-post-attachment','delete-post','delete-thread','delete-shout','format','editor-preview','message-reply','admin-tab','ban-user','group-delete','new-category','edit-category','category-visibility'];const busy=!immediate.includes(button.dataset.action);try{if(busy){button.dataset.busy='1';button.setAttribute('aria-busy','true');button.disabled=true;}await handleAction(button);}catch(err){toast(err.message,true);if(err.status===401){state.user=null;authModal('login');}}finally{if(busy){button.dataset.busy='0';button.removeAttribute('aria-busy');button.disabled=false;}}});
 
 async function submitForm(form){const type=form.dataset.form;const values=Object.fromEntries(new FormData(form).entries());switch(type){
 case 'saved-filters':
@@ -1521,7 +1579,38 @@ async function updateStats() {
         if (summaryRequest === controller) summaryRequest = null;
     }
 }
-document.addEventListener('submit',async event=>{const form=event.target;if(!form.dataset.form)return;event.preventDefault();if(form.dataset.busy==='1')return;form.dataset.busy='1';const error=$('.form-error',form);if(error)error.textContent='';const buttons=$$('button[type=submit]',form);buttons.forEach(b=>{b.disabled=true;b.setAttribute('aria-busy','true');});try{await submitForm(form);}catch(err){if(error&&error.isConnected)error.textContent=err.message;else toast(err.message,true);}finally{form.dataset.busy='0';buttons.forEach(b=>{b.disabled=false;b.removeAttribute('aria-busy');});}});
+document.addEventListener('submit', async event => {
+    const form = event.target;
+    if (!form.dataset.form) return;
+    event.preventDefault();
+    if (form.dataset.busy === '1') return;
+
+    const attachment = $('[data-post-attachment]', form);
+    if (attachment && !updatePostAttachment(attachment)) {
+        attachment.reportValidity();
+        return;
+    }
+    form.dataset.busy = '1';
+    const error = $('.form-error', form);
+    if (error) error.textContent = '';
+    const buttons = $$('button[type=submit]', form);
+    for (const button of buttons) {
+        button.disabled = true;
+        button.setAttribute('aria-busy', 'true');
+    }
+    try {
+        await submitForm(form);
+    } catch (err) {
+        if (error?.isConnected) error.textContent = err.message;
+        else toast(err.message, true);
+    } finally {
+        form.dataset.busy = '0';
+        for (const button of buttons) {
+            button.disabled = false;
+            button.removeAttribute('aria-busy');
+        }
+    }
+});
 function clearMessageRecipients(form) {
     form.elements.recipient_id.innerHTML = `<option value="">${tx('ui.messages.recipient_choose')}</option>`;
     $('[data-recipient-status]', form).textContent = '';
@@ -1535,6 +1624,9 @@ dialog.addEventListener('close', flushDrafts);
 document.addEventListener('invalid', event => {
     if (event.target.matches('.editor textarea[hidden]')) {
         setEditorPreview(event.target.closest('.editor'), false);
+    } else if (event.target.matches('[data-post-attachment]')) {
+        const details = event.target.closest('details');
+        if (details) details.open = true;
     }
 }, true);
 window.addEventListener('pagehide', () => {
@@ -1546,6 +1638,8 @@ document.addEventListener('change', queueDraft);
 document.addEventListener('change', event => {
     if (event.target.id === 'following-category') {
         updateRouteQuery({category: event.target.value || null, page: null});
+    } else if (event.target.matches('[data-post-attachment]')) {
+        updatePostAttachment(event.target);
     }
 });
 dialog.addEventListener('click',event=>{if(event.target===dialog){const r=dialog.getBoundingClientRect();if(event.clientX<r.left||event.clientX>r.right||event.clientY<r.top||event.clientY>r.bottom)closeDialog();}});
