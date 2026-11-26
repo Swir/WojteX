@@ -790,6 +790,10 @@ function mailboxUrl(folder, page = 1) {
     return '#/messages' + (params.size ? '?' + params : '');
 }
 
+function privateMessageBodyField() {
+    return `<label class="field"><span>${tx('ui.messages.body')}</span><textarea name="body" minlength="1" maxlength="4000" required placeholder="${tx('ui.messages.body_placeholder')}"></textarea></label>`;
+}
+
 /** Personal inbox: message bodies are escaped as text. */
 async function renderPrivateMessages(route, token) {
     const view=$('#view');
@@ -820,13 +824,17 @@ async function renderPrivateMessages(route, token) {
     const entries=(result.data||[]).map(m=>{
         const partner=m.outgoing?m.recipient:m.sender;
         const incoming=!m.outgoing;
+        const canContact = partner && !blockedIds.has(Number(partner.id));
         return `<article class="private-message-row ${incoming&&!m.read_at?'unread':''}">
             <div class="private-message-heading">${avatar(partner,'small')}<div><strong>${e(partner?.name||tr('ui.user.fallback'))}</strong><small>${incoming?tx('ui.messages.received'):tx('ui.messages.sent_to')} · ${e(relative(m.created_at))}</small></div></div>
             <p class="private-message-body">${e(m.body)}</p>
-            ${incoming&&!m.read_at?`<button type="button" class="button button-small button-secondary" data-action="message-read" data-id="${Number(m.id)}">${icon('check')}${tx('ui.messages.mark_read')}</button>`:''}
-            ${incoming?`<button type="button" class="button button-small button-secondary" data-action="message-report" data-id="${Number(m.id)}">${icon('alert')}${tx('ui.reports.report')}</button>`:''}
-            <button type="button" class="button button-small button-secondary" data-action="message-hide" data-id="${Number(m.id)}">${icon('trash')}${tx('ui.messages.hide')}</button>
-            ${partner&&!blockedIds.has(Number(partner.id))?`<button type="button" class="button button-small button-secondary" data-action="message-block" data-id="${Number(partner.id)}" data-name="${e(partner.name)}">${icon('shield')}${tx('ui.messages.block')}</button>`:''}
+            <div class="wx-message-actions">
+                ${canContact ? `<button type="button" class="button button-small button-secondary" data-action="message-reply" data-id="${Number(m.id)}" data-recipient="${Number(partner.id)}" data-name="${e(partner.name)}" data-outgoing="${m.outgoing}">${icon('message')}${incoming ? tx('ui.messages.reply') : tx('ui.messages.write_again')}</button>` : ''}
+                ${incoming&&!m.read_at?`<button type="button" class="button button-small button-secondary" data-action="message-read" data-id="${Number(m.id)}">${icon('check')}${tx('ui.messages.mark_read')}</button>`:''}
+                ${incoming?`<button type="button" class="button button-small button-secondary" data-action="message-report" data-id="${Number(m.id)}">${icon('alert')}${tx('ui.reports.report')}</button>`:''}
+                <button type="button" class="button button-small button-secondary" data-action="message-hide" data-id="${Number(m.id)}">${icon('trash')}${tx('ui.messages.hide')}</button>
+                ${canContact ? `<button type="button" class="button button-small button-secondary" data-action="message-block" data-id="${Number(partner.id)}" data-name="${e(partner.name)}">${icon('shield')}${tx('ui.messages.block')}</button>` : ''}
+            </div>
         </article>`;
     }).join('');
     const currentPage = result.current_page;
@@ -840,7 +848,7 @@ async function renderPrivateMessages(route, token) {
         <label class="field"><span>${tx('ui.messages.recipient_select')}</span><select name="recipient_id" required><option value="">${tx('ui.messages.recipient_choose')}</option></select></label>
         <p class="form-note" data-recipient-status aria-live="polite"></p>
         <button type="button" class="button button-small button-secondary" data-action="message-block-selected">${icon('shield')}${tx('ui.messages.block_selected')}</button>
-        <label class="field"><span>${tx('ui.messages.body')}</span><textarea name="body" minlength="1" maxlength="4000" required placeholder="${tx('ui.messages.body_placeholder')}"></textarea></label>
+        ${privateMessageBodyField()}
         <div class="form-footer"><button type="submit" class="button button-primary">${icon('send')}${tx('ui.messages.send')}</button></div></form></section>
         <div data-mailbox-content></div>`;
     }
@@ -1251,6 +1259,21 @@ function reportMessageModal(id){
         <label class="field"><span>${tx('ui.reports.details')}</span><textarea name="details" maxlength="500" placeholder="${tx('ui.reports.details_hint')}"></textarea></label>
         <div class="form-footer"><button type="button" class="button button-ghost" data-action="close-dialog">${tx('ui.common.cancel')}</button><button type="submit" class="button button-primary">${tx('ui.reports.send')}</button></div></form>`,false,'alert');
 }
+
+function replyMessageModal(button, messageId) {
+    const recipientId = Number(button.dataset.recipient);
+    const title = button.dataset.outgoing === 'true' ? tr('ui.messages.write_again') : tr('ui.messages.reply');
+    const recipient = tr('ui.messages.reply_recipient', {name: button.dataset.name, id: recipientId});
+    modal(title, recipient, `<form data-form="private-message-reply" data-id="${messageId}">
+        <div class="form-error" role="alert"></div>
+        <input type="hidden" name="recipient_id" value="${recipientId}">
+        ${privateMessageBodyField()}
+        <div class="form-footer">
+            <button type="button" class="button button-ghost" data-action="close-dialog">${tx('ui.common.cancel')}</button>
+            <button type="submit" class="button button-primary">${icon('send')}${tx('ui.messages.send')}</button>
+        </div>
+    </form>`, false, 'message');
+}
 function formatEditor(button){const area=$('textarea',button.closest('.editor'));if(!area)return;const {selectionStart:start,selectionEnd:end}=area;const selected=area.value.slice(start,end);let prefix='',suffix='',placeholder=tr('ui.editor.text');switch(button.dataset.format){case'bold':prefix='**';suffix='**';placeholder=tr('ui.editor.bold_text');break;case'italic':prefix='*';suffix='*';placeholder=tr('ui.editor.text');break;case'link':prefix='[';suffix='](https://example.com)';placeholder=tr('ui.editor.link_text');break;case'code':prefix='\n```\n';suffix='\n```\n';placeholder=tr('ui.editor.code_text');break;case'quote':prefix='\n> ';placeholder=tr('ui.editor.quote_text');break;case'list':prefix='\n- ';placeholder=tr('ui.editor.list_text');break;}if(button.closest('.editor').dataset.syntax==='bbcode'){const tags={bold:['[b]','[/b]'],italic:['[i]','[/i]'],link:['[url=https://example.com]','[/url]'],code:['\n[code]\n','\n[/code]\n'],quote:['\n[quote]','[/quote]\n'],list:['\n[list]\n[*]','\n[/list]\n']};[prefix,suffix]=tags[button.dataset.format]||['',''];}const replacement=prefix+(selected||placeholder)+suffix;area.setRangeText(replacement,start,end,'end');area.focus();if(!selected)area.setSelectionRange(start+prefix.length,start+prefix.length+placeholder.length);area.dispatchEvent(new Event('input',{bubbles:true}));}
 async function reloadData(){await loadBootstrap();await Promise.allSettled([navigate(),refreshShouts(true),refreshRankings()]);}
 async function refreshGroups(){state.groupData=await request('/api/admin/groups');}
@@ -1311,6 +1334,7 @@ case 'message-unblock':confirmModal(tr('ui.messages.unblock_title'),tr('ui.messa
     closeDialog();await navigate();toast(tr('ui.messages.unblocked_notice'));
 },false);break;
 case 'message-report':reportMessageModal(id);break;
+case 'message-reply':replyMessageModal(button, id);break;
 case 'message-read':
     await request(`/api/messages/${id}/read`, {method: 'PATCH'});
     if (button.isConnected) {
@@ -1384,7 +1408,7 @@ case 'edit-category':categoryModal(id);break;
 case 'category-visibility':{const c=(state.admin.categories||state.bootstrap.categories).find(c=>c.id===id);const makePublic=!!c.is_private;confirmModal(makePublic?tr('ui.admin.public_title'):tr('ui.admin.private_title'),makePublic?tr('ui.admin.public_body',{name:c.name}):tr('ui.admin.private_body',{name:c.name}),makePublic?tr('ui.admin.make_public'):tr('ui.admin.make_private'),async()=>{await request(`/api/admin/categories/${id}`,{method:'PATCH',body:{is_private:!c.is_private}});closeDialog();await loadBootstrap();await refreshAdmin();toast(tr('ui.admin.visibility_saved'));},false);}break;
 }}
 
-document.addEventListener('click',async event=>{const button=event.target.closest('[data-action]');if(!button||button.disabled)return;if(button.tagName!=='A')event.preventDefault();if(button.dataset.busy==='1')return;const immediate=['toggle-menu','appearance','reset-appearance','login','register','account','close-dialog','close-on-nav','new-topic','discard-draft','overwrite-draft','quick-search','sort','page','quote','edit-post','attach-post','delete-post','delete-thread','delete-shout','format','editor-preview','admin-tab','ban-user','group-delete','new-category','edit-category','category-visibility'];const busy=!immediate.includes(button.dataset.action);try{if(busy){button.dataset.busy='1';button.setAttribute('aria-busy','true');button.disabled=true;}await handleAction(button);}catch(err){toast(err.message,true);if(err.status===401){state.user=null;authModal('login');}}finally{if(busy){button.dataset.busy='0';button.removeAttribute('aria-busy');button.disabled=false;}}});
+document.addEventListener('click',async event=>{const button=event.target.closest('[data-action]');if(!button||button.disabled)return;if(button.tagName!=='A')event.preventDefault();if(button.dataset.busy==='1')return;const immediate=['toggle-menu','appearance','reset-appearance','login','register','account','close-dialog','close-on-nav','new-topic','discard-draft','overwrite-draft','quick-search','sort','page','quote','edit-post','attach-post','delete-post','delete-thread','delete-shout','format','editor-preview','message-reply','admin-tab','ban-user','group-delete','new-category','edit-category','category-visibility'];const busy=!immediate.includes(button.dataset.action);try{if(busy){button.dataset.busy='1';button.setAttribute('aria-busy','true');button.disabled=true;}await handleAction(button);}catch(err){toast(err.message,true);if(err.status===401){state.user=null;authModal('login');}}finally{if(busy){button.dataset.busy='0';button.removeAttribute('aria-busy');button.disabled=false;}}});
 
 async function submitForm(form){const type=form.dataset.form;const values=Object.fromEntries(new FormData(form).entries());switch(type){
 case 'saved-filters':
@@ -1394,9 +1418,23 @@ case 'login':case 'register':{await request('/api/auth/'+type,{method:'POST',bod
 case 'forgot-password':{const r=await request('/api/auth/password/forgot',{method:'POST',body:{email:values.email}});modal(tr('ui.auth.forgot_title'),tr('ui.auth.forgot_subtitle'),`<p class="form-note">${e(r.message)}</p><div class="auth-switch"><button data-action="login">${tx('ui.auth.back_to_login')}</button></div>`,false,'check-circle');}break;
 case 'reset-password':{const r=await request('/api/auth/password/reset',{method:'POST',body:values});closeDialog();history.replaceState(null,'',location.pathname+location.search+'#/login');await navigate();toast(r.message);}break;
 case 'private-message-report':await request(`/api/messages/${Number(form.dataset.id)}/report`,{method:'POST',body:{reason:values.reason,details:values.details||null}});closeDialog();toast(tr('ui.reports.sent'));break;
-case 'private-message': {
+case 'private-message':
+case 'private-message-reply': {
+    const account = state.user?.id;
+    const mailbox = location.hash;
     const result = await request('/api/messages', {method: 'POST', body: {recipient_id: Number(values.recipient_id), body: values.body}});
-    if (form.isConnected) {
+    if (type === 'private-message-reply') {
+        if (form.isConnected && dialog.open && form.elements.body.value === values.body) {
+            closeDialog();
+            if (state.user?.id === account && state.route?.name === 'messages' && location.hash === mailbox) {
+                await navigate();
+                if (location.hash === mailbox) {
+                    const source = $(`[data-action="message-reply"][data-id="${Number(form.dataset.id)}"]`);
+                    (source || $('.wx-mailbox-nav [aria-current="page"]'))?.focus();
+                }
+            }
+        }
+    } else if (form.isConnected) {
         if (form.elements.body.value === values.body && form.elements.recipient_id.value === values.recipient_id) {
             form.reset();
             clearMessageRecipients(form);

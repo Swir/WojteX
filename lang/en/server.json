@@ -246,7 +246,7 @@
   "server.group_exists": "A group with this name or address already exists.",
   "server.group_view_required": "Enable viewing before granting topic creation or replies.",
   "server.messages_banned": "Blocked accounts cannot use private messages.",
-  "server.messages_recipient_unavailable": "Recipient not found, unavailable or ambiguous. Use the exact display name.",
+  "server.messages_recipient_unavailable": "This recipient is unavailable or could not be identified unambiguously.",
   "server.messages_body_required": "Enter a message.",
   "server.messages_not_found": "Message not found.",
   "server.messages_sent": "Message sent."

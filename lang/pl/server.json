@@ -246,7 +246,7 @@
   "server.group_exists": "Grupa o tej nazwie lub identyfikatorze już istnieje.",
   "server.group_view_required": "Najpierw zezwól na przeglądanie działu, aby przyznać prawo tworzenia tematów lub odpowiedzi.",
   "server.messages_banned": "Zablokowane konta nie mogą korzystać z prywatnych wiadomości.",
-  "server.messages_recipient_unavailable": "Nie znaleziono odbiorcy, jest niedostępny lub nazwa jest niejednoznaczna. Wpisz dokładną nazwę.",
+  "server.messages_recipient_unavailable": "Ten odbiorca jest niedostępny lub nie można go jednoznacznie zidentyfikować.",
   "server.messages_body_required": "Wpisz treść wiadomości.",
   "server.messages_not_found": "Nie znaleziono wiadomości.",
   "server.messages_sent": "Wiadomość wysłana."
