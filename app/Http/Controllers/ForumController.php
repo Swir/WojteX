@@ -87,6 +87,16 @@ class ForumController extends Controller
         return response()->json(['data' => $results]);
     }
 
+    public function previewPost(Request $request)
+    {
+        $data = $request->validate([
+            'body' => 'required|string|max:50000',
+            'format' => 'required|in:markdown,bbcode',
+        ]);
+
+        return response()->json(['html' => Forum::bodyHtml($data['body'], $data['format'])]);
+    }
+
     public function create(Request $request)
     {
         $data=$request->validate(['category_id'=>'required|integer','title'=>'required|string|min:5|max:180','body'=>'required|string|min:3|max:50000']);

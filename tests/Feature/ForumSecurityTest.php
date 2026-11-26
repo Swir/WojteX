@@ -778,6 +778,46 @@ class ForumSecurityTest extends TestCase
         $this->assertDatabaseHas('posts', ['id' => $post, 'body' => $body]);
     }
 
+    public function test_post_preview_uses_the_published_renderer_without_creating_a_post(): void
+    {
+        $this->actingAs($this->user());
+        $body = "**Useful text**\n\n- Example\n\n<script>hidden</script>";
+        $response = $this->postJson('/api/posts/preview', ['body' => $body, 'format' => 'markdown'])->assertOk();
+        $preview = $response->json('html');
+        $this->assertStringContainsString('<strong>Useful text</strong>', $preview);
+        $this->assertStringContainsString('<li>Example</li>', $preview);
+        $this->assertStringNotContainsString('<script', $preview);
+        $this->assertStringContainsString('no-store', $response->headers->get('Cache-Control'));
+        $this->assertDatabaseCount('posts', 0);
+
+        $id = $this->postJson('/api/threads', [
+            'category_id' => $this->category(), 'title' => 'Preview and publish', 'body' => $body,
+        ])->assertCreated()->json('thread.id');
+        $this->getJson('/api/threads/'.$id)->assertOk()->assertJsonPath('posts.0.body_html', $preview);
+    }
+
+    public function test_post_preview_requires_an_active_account_and_accepts_legacy_bbcode(): void
+    {
+        $body = '[b]Imported post[/b] <em>HTML</em>';
+        $payload = ['body' => $body, 'format' => 'bbcode'];
+        $this->postJson('/api/posts/preview', $payload)->assertUnauthorized();
+
+        $author = $this->user();
+        $this->actingAs($author);
+        $this->postJson('/api/posts/preview', ['body' => str_repeat('a', 50001), 'format' => 'html'])
+            ->assertUnprocessable()->assertJsonValidationErrors(['body', 'format']);
+
+        $preview = $this->postJson('/api/posts/preview', $payload)->assertOk()->json('html');
+        $this->assertStringContainsString('<strong>Imported post</strong>', $preview);
+        $this->assertStringContainsString('&lt;em&gt;HTML&lt;/em&gt;', $preview);
+        [$thread, $post] = $this->thread($author, $this->category(), body: $body);
+        DB::table('posts')->where('id', $post)->update(['body_format' => 'bbcode']);
+        $this->getJson('/api/threads/'.$thread)->assertOk()->assertJsonPath('posts.0.body_html', $preview);
+
+        DB::table('users')->where('id', $author->id)->update(['is_banned' => true]);
+        $this->postJson('/api/posts/preview', $payload)->assertForbidden();
+    }
+
     public function test_markdown_references_remain_local_to_each_post(): void
     {
         $author = $this->user();

@@ -245,6 +245,23 @@
 .wx-draft-bar .text-button { min-height: 36px; padding-inline: 6px; }
 .wx-draft-bar .text-button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .wx-copy-post .icon { width: 16px; height: 16px; }
+.editor textarea[hidden], .wx-editor-preview[hidden] { display: none; }
+.editor-toolbar button.wx-editor-preview-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    width: auto;
+    min-height: 40px;
+    padding-inline: 10px;
+    white-space: nowrap;
+}
+.wx-editor-preview-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.editor-toolbar button[data-format]:disabled { opacity: .45; cursor: default; }
+.wx-editor-preview { padding: 18px; min-height: 160px; }
+.wx-editor-preview-status { margin: 0; color: var(--muted); }
+.wx-editor-preview .post-body { margin: 0; font-size: 16px; }
+.wx-editor-preview .post-body table { display: block; max-width: 100%; overflow: auto; }
+.wx-editor-preview [data-preview-content]:empty { display: none; }
 
 .app-dialog.wx-search-dialog { width: 620px; max-height: min(82dvh, 760px); overflow: hidden; }
 .wx-search-dialog[open] { display: flex; flex-direction: column; }
@@ -282,6 +299,7 @@
 .wx-search-trigger:focus-visible, .wx-search-result:focus-visible, .wx-category-card:focus-visible, .wx-directory-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 @media (max-width: 740px) {
+    .editor-toolbar button.wx-editor-preview-toggle { min-height: 44px; }
     .wx-topic-row-personal { grid-template-columns: 32px minmax(0, 1fr) 44px; }
     .wx-thread-page .post-card:focus { scroll-margin-top: 132px; }
     .wx-unread-link { min-height: 40px; }

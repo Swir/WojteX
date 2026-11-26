@@ -657,7 +657,90 @@ function trackThreadReads(detail) {
 
 function postCard(p,number){const canEdit=state.user&&(state.user.id===p.author?.id||isMod())&&(!state.thread?.thread?.is_locked||isMod())&&(state.thread?.can_reply!==false||isMod());return `<article class="panel post-card" id="post-${Number(p.id)}"><div class="post-top">${avatar(p.author)}<div class="post-author"><strong>${e(p.author?.name||tr('ui.user.fallback'))}</strong>${role(p.author)}<small><time title="${e(dateTitle(p.created_at))}">${e(relative(p.created_at))}</time>${e(p.updated_at&&p.updated_at!==p.created_at?tr('ui.common.edited_suffix'):'')}</small></div><span class="post-number">#${number}</span></div><div class="post-body">${p.body_html||e(p.body).replace(/\n/g,'<br>')}</div>${p.attachments?.length?`<div class="attachments">${p.attachments.map(a=>`<a class="attachment" href="/attachments/${Number(a.id)}" target="_blank" rel="noopener noreferrer">${icon('paperclip')}${e(a.name||a.original_name||tr('ui.post.attachment'))}${a.size?`<span class="muted">(${formatBytes(a.size)})</span>`:''}</a>`).join('')}</div>`:''}<div class="post-actions"><div class="post-actions-group"><button type="button" class="subtle-button wx-copy-post" data-action="copy-post" data-id="${Number(p.id)}" aria-label="${tx('ui.post.copy_link_label',{number})}">${icon('link')}${tx('ui.post.copy_link')}</button><button class="reaction-button ${p.reacted?'active':''}" data-action="react" data-id="${Number(p.id)}" aria-pressed="${!!p.reacted}" ${state.thread?.can_reply===false?'disabled':state.user?.id===p.author?.id?`disabled title="${tx('ui.post.own_reaction')}"`:''}>${icon('heart')}<span>${count(p.reactions_count)}</span></button>${state.thread?.can_reply===false?'':`<button class="subtle-button" data-action="quote" data-id="${Number(p.id)}">${tx('ui.post.quote')}</button>`}</div>${canEdit?`<div class="post-actions-group"><button class="subtle-button" data-action="edit-post" data-id="${Number(p.id)}">${tx('ui.common.edit')}</button><button class="subtle-button" data-action="attach-post" data-id="${Number(p.id)}">${tx('ui.post.add_file')}</button>${number!==1?`<button class="subtle-button" data-action="delete-post" data-id="${Number(p.id)}">${tx('ui.common.delete')}</button>`:''}</div>`:''}</div></article>`;}
 function formatBytes(bytes){const unit=bytes>=1024*1024?'megabyte':'kilobyte';const value=bytes>=1024*1024?bytes/1024/1024:Math.ceil(bytes/1024);return new Intl.NumberFormat(activeLocale(),{style:'unit',unit,unitDisplay:'short',maximumFractionDigits:1}).format(value);}
-function editor(name='body',value='',placeholder=tr('ui.editor.placeholder'),syntax='markdown'){return `<div class="editor" data-syntax="${syntax==='bbcode'?'bbcode':'markdown'}"><div class="editor-toolbar"><button type="button" data-action="format" data-format="bold" aria-label="${tx('ui.editor.bold')}"><strong>B</strong></button><button type="button" data-action="format" data-format="italic" aria-label="${tx('ui.editor.italic')}"><em>I</em></button><button type="button" data-action="format" data-format="link" aria-label="${tx('ui.editor.link')}">${icon('link')}</button><button type="button" data-action="format" data-format="code" aria-label="${tx('ui.editor.code')}">${icon('code')}</button><button type="button" data-action="format" data-format="quote" aria-label="${tx('ui.editor.quote')}">${icon('quote')}</button><button type="button" data-action="format" data-format="list" aria-label="${tx('ui.editor.list')}">${icon('list')}</button><small>${syntax==='bbcode'?'BBCODE':'MARKDOWN'}</small></div><textarea name="${e(name)}" placeholder="${e(placeholder)}" required maxlength="50000" aria-label="${tx('ui.editor.body_label')}">${e(value)}</textarea></div>`;}
+let nextEditorId = 0;
+const editorPreviews = new WeakMap();
+
+function editor(name = 'body', value = '', placeholder = tr('ui.editor.placeholder'), syntax = 'markdown') {
+    const previewId = 'editor-preview-' + ++nextEditorId;
+    const format = syntax === 'bbcode' ? 'bbcode' : 'markdown';
+    return `<div class="editor" data-syntax="${format}">
+        <div class="editor-toolbar">
+            <button type="button" data-action="format" data-format="bold" aria-label="${tx('ui.editor.bold')}"><strong>B</strong></button>
+            <button type="button" data-action="format" data-format="italic" aria-label="${tx('ui.editor.italic')}"><em>I</em></button>
+            <button type="button" data-action="format" data-format="link" aria-label="${tx('ui.editor.link')}">${icon('link')}</button>
+            <button type="button" data-action="format" data-format="code" aria-label="${tx('ui.editor.code')}">${icon('code')}</button>
+            <button type="button" data-action="format" data-format="quote" aria-label="${tx('ui.editor.quote')}">${icon('quote')}</button>
+            <button type="button" data-action="format" data-format="list" aria-label="${tx('ui.editor.list')}">${icon('list')}</button>
+            <small>${format.toUpperCase()}</small>
+            <button type="button" class="wx-editor-preview-toggle" data-action="editor-preview" aria-controls="${previewId}" aria-expanded="false">
+                ${icon('eye')}<span>${tx('ui.editor.preview')}</span>
+            </button>
+        </div>
+        <textarea name="${e(name)}" placeholder="${e(placeholder)}" required maxlength="50000" aria-label="${tx('ui.editor.body_label')}">${e(value)}</textarea>
+        <div class="wx-editor-preview" id="${previewId}" data-editor-preview hidden>
+            <p class="wx-editor-preview-status" data-preview-status role="status"></p>
+            <div class="post-body" data-preview-content></div>
+        </div>
+    </div>`;
+}
+
+function setEditorPreview(editor, open) {
+    const button = $('[data-action="editor-preview"]', editor);
+    button.setAttribute('aria-expanded', String(open));
+    $('span', button).textContent = open ? tr('ui.editor.back_to_edit') : tr('ui.editor.preview');
+    $('textarea', editor).hidden = open;
+    $('[data-editor-preview]', editor).hidden = !open;
+    $$('[data-format]', editor).forEach(control => { control.disabled = open; });
+    if (!open) {
+        editorPreviews.get(editor)?.abort();
+        editorPreviews.delete(editor);
+    }
+}
+
+async function toggleEditorPreview(button) {
+    const editor = button.closest('.editor');
+    const textarea = $('textarea', editor);
+    if (button.getAttribute('aria-expanded') === 'true') {
+        setEditorPreview(editor, false);
+        textarea.focus();
+        return;
+    }
+
+    const status = $('[data-preview-status]', editor);
+    const output = $('[data-preview-content]', editor);
+    setEditorPreview(editor, true);
+    status.classList.remove('sr-only');
+    output.replaceChildren();
+    if (!textarea.value.trim()) {
+        status.textContent = tr('ui.editor.preview_empty');
+        return;
+    }
+
+    const controller = new AbortController();
+    editorPreviews.set(editor, controller);
+    status.textContent = tr('ui.editor.preview_loading');
+    try {
+        const {html} = await request('/api/posts/preview', {
+            method: 'POST', body: {body: textarea.value, format: editor.dataset.syntax}, signal: controller.signal
+        });
+        if (typeof html !== 'string') throw new Error('Invalid preview response');
+        if (!editor.isConnected || editorPreviews.get(editor) !== controller) return;
+        output.innerHTML = html;
+        for (const link of $$('a[href]', output)) {
+            link.target = '_blank';
+            link.rel = 'noopener noreferrer';
+        }
+        status.textContent = tr('ui.editor.preview_ready');
+        status.classList.add('sr-only');
+    } catch (err) {
+        if (editor.isConnected && editorPreviews.get(editor) === controller) {
+            status.textContent = err.status === 429 ? err.message : tr('ui.editor.preview_failed');
+        }
+    } finally {
+        if (editorPreviews.get(editor) === controller) editorPreviews.delete(editor);
+    }
+}
+
 function replyForm(t){if(state.thread?.can_reply===false&&state.user&&!isMod())return `<section class="panel reply-panel">${empty(tr('ui.groups.read_only'),tr('ui.groups.read_only_help'),'lock')}</section>`;if(t.is_locked&&!isMod())return `<section class="panel reply-panel">${empty(tr('ui.post.closed_title'),tr('ui.post.closed_help'),'lock')}</section>`;if(!state.user)return `<section class="panel reply-panel">${empty(tr('ui.post.perspective_title'),tr('ui.post.sign_in_help'),'message',`<button class="button button-primary" data-action="login">${tx('ui.post.sign_in_reply')}</button>`)}</section>`;return `<section class="panel reply-panel" id="reply-panel"><div class="reply-header">${avatar(state.user)}<div><h3>${tx('ui.post.reply_title')}</h3><small>${tx('ui.post.reply_subtitle')}</small></div></div><form data-form="reply" data-thread="${Number(t.id)}"><div class="form-error" role="alert"></div>${editor()}${draftControls()}<div class="reply-bottom"><small>${tx('ui.post.markdown_help')}<br>${tx('ui.post.be_helpful')}</small><button class="button button-primary" type="submit">${tx('ui.post.publish_reply')}${icon('arrow-right')}</button></div></form></section>`;}
 async function renderRankings(token){setHeader(tr('ui.rankings.header'),tr('ui.rankings.subtitle'),tr('ui.rankings.eyebrow'));if(!pluginEnabled('rankings')){$('#view').innerHTML=`<div class="panel">${empty(tr('ui.rankings.disabled'),tr('ui.rankings.disabled_help'),'trophy')}</div>`;return;}const r=await request('/api/rankings');if(token!==state.viewToken)return;state.rankings=r.data||[];renderSidebarRankings();$('#view').innerHTML=`<section class="panel ranking-hero"><div class="empty-icon">${icon('trophy')}</div><div><h2>${tx('ui.rankings.hero')}</h2><p>${tx('ui.rankings.explanation')}</p></div></section><section class="panel"><div class="panel-header"><h2>${tx('ui.rankings.overall')}</h2><span class="minor-label">${e(counted(state.rankings.length,'people').toUpperCase())}</span></div>${state.rankings.length?state.rankings.map((u,i)=>`<div class="full-rank-row"><span class="rank-position ${i<3?'first':''}">${String(i+1).padStart(2,'0')}</span>${avatar(u)}<div class="rank-user"><strong>${e(u.name)}${role(u)}</strong><small>${e(u.badge||tr('ui.rankings.member'))}</small></div><div class="rank-metric posts">${count(u.posts_count)}<small>${e(noun(u.posts_count,'posts'))}</small></div><div class="rank-metric score">${count(u.score)}<small>${e(noun(u.score,'points'))}</small></div></div>`).join(''):empty(tr('ui.rankings.first'),tr('ui.rankings.first_help'),'trophy')}</section>`;}
 /** Personal inbox: messages stay text, never innerHTML from user content. */
@@ -850,6 +933,7 @@ function discardDraft(form) {
         return;
     }
     entry.raw = null;
+    setEditorPreview(form.elements.body.closest('.editor'), false);
     form.elements.body.value = '';
     if (form.elements.title) form.elements.title.value = '';
     if (form.elements.attachment) form.elements.attachment.value = '';
@@ -1192,8 +1276,8 @@ case 'copy-post':
     await copyForumLink(`#/thread/${state.thread.thread.id}?post=${id}`, tr('ui.post.link_title'), tr('ui.post.link_address'), tr('ui.post.link_copied'));
     break;
 case 'react':if(ensureAuth()){const r=await request(`/api/posts/${id}/reaction`,{method:'POST'});button.classList.toggle('active',r.reacted);button.setAttribute('aria-pressed',String(r.reacted));button.innerHTML=icon('heart')+`<span>${count(r.reactions_count)}</span>`;await refreshRankings();}break;
-case 'quote':{if(!ensureAuth())break;const p=state.thread?.posts?.find(p=>p.id===id);const area=$('#reply-panel textarea');if(!area){toast(tr('ui.topic.closed_error'),true);break;}if(p){const quote=`> **${p.author?.name||tr('ui.user.fallback')}:**\n${p.body.split('\n').map(l=>'> '+l).join('\n')}\n\n`;area.value+=quote;area.dispatchEvent(new Event('input',{bubbles:true}));area.focus();$('#reply-panel').scrollIntoView({behavior:'smooth',block:'center'});}}break;
-case 'focus-reply':if(ensureAuth()){const field=$('#reply-panel textarea');if(field){field.focus({preventScroll:true});field.scrollIntoView({behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth',block:'center'});}}break;
+case 'quote':{if(!ensureAuth())break;const p=state.thread?.posts?.find(p=>p.id===id);const area=$('#reply-panel textarea');if(!area){toast(tr('ui.topic.closed_error'),true);break;}if(p){setEditorPreview(area.closest('.editor'),false);const quote=`> **${p.author?.name||tr('ui.user.fallback')}:**\n${p.body.split('\n').map(l=>'> '+l).join('\n')}\n\n`;area.value+=quote;area.dispatchEvent(new Event('input',{bubbles:true}));area.focus();$('#reply-panel').scrollIntoView({behavior:'smooth',block:'center'});}}break;
+case 'focus-reply':if(ensureAuth()){const field=$('#reply-panel textarea');if(field){setEditorPreview(field.closest('.editor'),false);field.focus({preventScroll:true});field.scrollIntoView({behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth',block:'center'});}}break;
 case 'edit-post':editPostModal(id);break;
 case 'attach-post':attachmentModal(id);break;
 case 'delete-post':confirmModal(tr('ui.post.delete_title'),tr('ui.post.delete_body'),tr('ui.post.delete_button'),async()=>{await request(`/api/posts/${id}`,{method:'DELETE'});closeDialog();await navigate();toast(tr('ui.post.deleted'));});break;
@@ -1202,6 +1286,7 @@ case 'toggle-pin':await request(`/api/threads/${id}`,{method:'PATCH',body:{is_pi
 case 'delete-thread':confirmModal(tr('ui.topic.delete_title'),tr('ui.topic.delete_body'),tr('ui.topic.delete'),async()=>{await request(`/api/threads/${id}`,{method:'DELETE'});closeDialog();location.hash='/';toast(tr('ui.topic.deleted'));});break;
 case 'delete-shout':confirmModal(tr('ui.shout.delete_title'),tr('ui.shout.delete_body'),tr('ui.shout.delete_button'),async()=>{await request(`/api/shouts/${id}`,{method:'DELETE'});state.shouts=state.shouts.filter(s=>s.id!==id);paintShouts();closeDialog();toast(tr('ui.shout.deleted'));});break;
 case 'format':formatEditor(button);break;
+case 'editor-preview':await toggleEditorPreview(button);break;
 case 'reports-filter':state.reportStatus=button.dataset.status;state.reportPage=1;await refreshReports();renderAdminView();break;
 case 'reports-page':state.reportPage=Number(button.dataset.page);await refreshReports();renderAdminView();break;
 case 'reports-review':await request(`/api/admin/message-reports/${id}`,{method:'PATCH',body:{status:button.dataset.status}});await refreshReports();renderAdminView();toast(tr('ui.reports.review_saved'));break;
@@ -1216,7 +1301,7 @@ case 'edit-category':categoryModal(id);break;
 case 'category-visibility':{const c=(state.admin.categories||state.bootstrap.categories).find(c=>c.id===id);const makePublic=!!c.is_private;confirmModal(makePublic?tr('ui.admin.public_title'):tr('ui.admin.private_title'),makePublic?tr('ui.admin.public_body',{name:c.name}):tr('ui.admin.private_body',{name:c.name}),makePublic?tr('ui.admin.make_public'):tr('ui.admin.make_private'),async()=>{await request(`/api/admin/categories/${id}`,{method:'PATCH',body:{is_private:!c.is_private}});closeDialog();await loadBootstrap();await refreshAdmin();toast(tr('ui.admin.visibility_saved'));},false);}break;
 }}
 
-document.addEventListener('click',async event=>{const button=event.target.closest('[data-action]');if(!button||button.disabled)return;if(button.tagName!=='A')event.preventDefault();if(button.dataset.busy==='1')return;const immediate=['toggle-menu','appearance','reset-appearance','login','register','account','close-dialog','close-on-nav','new-topic','discard-draft','overwrite-draft','quick-search','sort','page','quote','edit-post','attach-post','delete-post','delete-thread','delete-shout','format','admin-tab','ban-user','group-delete','new-category','edit-category','category-visibility'];const busy=!immediate.includes(button.dataset.action);try{if(busy){button.dataset.busy='1';button.setAttribute('aria-busy','true');button.disabled=true;}await handleAction(button);}catch(err){toast(err.message,true);if(err.status===401){state.user=null;authModal('login');}}finally{if(busy){button.dataset.busy='0';button.removeAttribute('aria-busy');button.disabled=false;}}});
+document.addEventListener('click',async event=>{const button=event.target.closest('[data-action]');if(!button||button.disabled)return;if(button.tagName!=='A')event.preventDefault();if(button.dataset.busy==='1')return;const immediate=['toggle-menu','appearance','reset-appearance','login','register','account','close-dialog','close-on-nav','new-topic','discard-draft','overwrite-draft','quick-search','sort','page','quote','edit-post','attach-post','delete-post','delete-thread','delete-shout','format','editor-preview','admin-tab','ban-user','group-delete','new-category','edit-category','category-visibility'];const busy=!immediate.includes(button.dataset.action);try{if(busy){button.dataset.busy='1';button.setAttribute('aria-busy','true');button.disabled=true;}await handleAction(button);}catch(err){toast(err.message,true);if(err.status===401){state.user=null;authModal('login');}}finally{if(busy){button.dataset.busy='0';button.removeAttribute('aria-busy');button.disabled=false;}}});
 
 async function submitForm(form){const type=form.dataset.form;const values=Object.fromEntries(new FormData(form).entries());switch(type){
 case 'login':case 'register':{await request('/api/auth/'+type,{method:'POST',body:values});closeDialog();state.shouts=[];state.lastShoutId=0;await reloadData();toast(type==='register'?tr('ui.auth.registered'):tr('ui.auth.welcome_back'));}break;
@@ -1280,6 +1365,11 @@ document.addEventListener('input',event=>{if(event.target.matches('[data-form="p
 document.addEventListener('change',event=>{if(event.target.id==='locale-picker'){changeLocale(event.target);return;}if(event.target.matches('[data-form="import"] input[name=file]')){state.importPreviewOK=false;state.importFile=event.target.files[0]||null;state.importReport=null;const result=$('#import-result');if(result)result.innerHTML='';}});
 $('#sidebar-backdrop').addEventListener('click',closeSidebar);
 dialog.addEventListener('close', flushDrafts);
+document.addEventListener('invalid', event => {
+    if (event.target.matches('.editor textarea[hidden]')) {
+        setEditorPreview(event.target.closest('.editor'), false);
+    }
+}, true);
 window.addEventListener('pagehide', () => {
     flushDrafts();
     finishReadTracking();

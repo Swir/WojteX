@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Preview formatting in the editor before publishing topics, replies and edits. The preview uses the same Markdown or BBCode renderer as published posts.
 - Follow discussions and filter your list to topics with new replies. Jump to the first unread reply and keep your reading position as you scroll. Follow access uses the same category permissions as the forum.
 - Mark an entire followed topic as read directly from the list. Replies received after marking appear as new again.
 - Filter followed topics by category. The selected category stays in the address when switching between all followed topics and those with new replies.

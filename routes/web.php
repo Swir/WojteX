@@ -24,6 +24,8 @@ Route::middleware('installed')->group(function(){
         Route::middleware('auth')->group(function(){
             Route::post('/auth/logout',[AuthController::class,'logout']);
             Route::patch('/profile',[AuthController::class,'profile']);
+            Route::post('/posts/preview',[ForumController::class,'previewPost'])
+                ->middleware(['fresh_forum_reader', 'throttle:45,1,post-preview']);
             Route::middleware(['throttle:posting', 'fresh_forum_reader'])->group(function(){
                 Route::post('/threads',[ForumController::class,'create']);
                 Route::post('/threads/{id}/posts',[ForumController::class,'reply'])->whereNumber('id');
