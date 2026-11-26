@@ -249,6 +249,7 @@ async function navigate() {
         : null;
     const savedFocus = route.name === 'saved' && focused?.id && focused.closest('.wx-saved-filters')
         ? '#' + focused.id : null;
+    const mailboxNav = route.name === 'messages' ? focused?.closest('.wx-mailbox-nav, .private-message-pager') : null;
     state.route = route;
     state.thread = null;
     state.page = state.threadPage = Number(route.query.get('page')) || 1;
@@ -257,8 +258,9 @@ async function navigate() {
     $('#main-content').classList.remove('wx-thread-page');
     $('#main-content').classList.toggle('wx-home', route.name === 'home');
     const view = $('#view');
+    const content = (route.name === 'messages' && mailboxContent(view)) || view;
     view.setAttribute('aria-busy', 'true');
-    view.innerHTML = loading();
+    content.innerHTML = loading();
     if (quickSearchDialog.open) quickSearchDialog.close();
     $('#workspace-grid').classList.toggle('chat-view', route.name === 'chat');
     try {
@@ -270,7 +272,7 @@ async function navigate() {
         else if(route.name==='categories'){renderDirectory();}
         else if(route.name==='thread'&&route.id){await renderThread(route.id,token);}
         else if(route.name==='rankings'){await renderRankings(token);}
-        else if(route.name==='messages'){await renderPrivateMessages(token);}
+        else if(route.name==='messages'){await renderPrivateMessages(route, token);}
         else if(route.name==='chat'){setHeader(tr('ui.shout.header'),tr('ui.shout.subtitle'),tr('ui.shout.eyebrow'));view.innerHTML=pluginEnabled('shoutbox')?`<div class="notice" style="margin-top:0">${tx('ui.shout.notice')}</div>${shoutPanel(true)}`:`<div class="panel">${empty(tr('ui.shout.disabled'),tr('ui.shout.disabled_help'),'chat')}</div>`;paintShouts();await refreshShouts(true);}
         else if(route.name==='login'){setHeader(tr('ui.page.login_title'),tr('ui.page.login_subtitle'));view.innerHTML='<div class="panel">'+empty(tr('ui.page.join'),tr('ui.page.join_help'),'users',`<button class="button button-primary" data-action="login">${tx('ui.auth.sign_in')}</button>`)+'</div>';authModal('login');}
         else if(route.name==='reset-password'){setHeader(tr('ui.auth.reset_title'),tr('ui.auth.reset_subtitle'));view.innerHTML=`<div class="panel">${empty(tr('ui.auth.reset_title'),tr('ui.auth.reset_subtitle'),'lock')}</div>`;resetPasswordModal(route);}
@@ -282,7 +284,8 @@ async function navigate() {
         const title = err.status === 404 ? tr('ui.page.content_missing')
             : err.status === 403 ? tr('ui.page.private') : tr('ui.page.load_failed');
         const retry = `<button class="button button-secondary" data-action="retry-view">${tx('ui.common.retry')}</button>`;
-        view.innerHTML = `<div class="panel">${empty(title, err.message, err.status === 403 ? 'lock' : 'alert', retry)}</div>`;
+        const target = [401, 403].includes(err.status) ? view : content;
+        target.innerHTML = `<div class="panel">${empty(title, err.message, err.status === 403 ? 'lock' : 'alert', retry)}</div>`;
     } finally {
         if (token === state.viewToken) {
             view.setAttribute('aria-busy', 'false');
@@ -290,6 +293,11 @@ async function navigate() {
             startVisibleSidebar();
             if (followingFocus) $(followingFocus, view)?.focus({preventScroll: true});
             if (savedFocus) ($(savedFocus, view) || $('#saved-query', view))?.focus({preventScroll: true});
+            if (mailboxNav) {
+                const activeFolder = $('.wx-mailbox-nav [aria-current="page"]', view);
+                if (mailboxNav.classList.contains('wx-mailbox-nav')) activeFolder?.focus();
+                else ($('.private-message-pager [aria-current="page"]', view) || activeFolder)?.focus({preventScroll: true});
+            }
         }
     }
 }
@@ -769,19 +777,44 @@ async function toggleEditorPreview(button) {
 
 function replyForm(t){if(state.thread?.can_reply===false&&state.user&&!isMod())return `<section class="panel reply-panel">${empty(tr('ui.groups.read_only'),tr('ui.groups.read_only_help'),'lock')}</section>`;if(t.is_locked&&!isMod())return `<section class="panel reply-panel">${empty(tr('ui.post.closed_title'),tr('ui.post.closed_help'),'lock')}</section>`;if(!state.user)return `<section class="panel reply-panel">${empty(tr('ui.post.perspective_title'),tr('ui.post.sign_in_help'),'message',`<button class="button button-primary" data-action="login">${tx('ui.post.sign_in_reply')}</button>`)}</section>`;return `<section class="panel reply-panel" id="reply-panel"><div class="reply-header">${avatar(state.user)}<div><h3>${tx('ui.post.reply_title')}</h3><small>${tx('ui.post.reply_subtitle')}</small></div></div><form data-form="reply" data-thread="${Number(t.id)}"><div class="form-error" role="alert"></div>${editor()}${draftControls()}<div class="reply-bottom"><small>${tx('ui.post.markdown_help')}<br>${tx('ui.post.be_helpful')}</small><button class="button button-primary" type="submit">${tx('ui.post.publish_reply')}${icon('arrow-right')}</button></div></form></section>`;}
 async function renderRankings(token){setHeader(tr('ui.rankings.header'),tr('ui.rankings.subtitle'),tr('ui.rankings.eyebrow'));if(!pluginEnabled('rankings')){$('#view').innerHTML=`<div class="panel">${empty(tr('ui.rankings.disabled'),tr('ui.rankings.disabled_help'),'trophy')}</div>`;return;}const r=await request('/api/rankings');if(token!==state.viewToken)return;state.rankings=r.data||[];renderSidebarRankings();$('#view').innerHTML=`<section class="panel ranking-hero"><div class="empty-icon">${icon('trophy')}</div><div><h2>${tx('ui.rankings.hero')}</h2><p>${tx('ui.rankings.explanation')}</p></div></section><section class="panel"><div class="panel-header"><h2>${tx('ui.rankings.overall')}</h2><span class="minor-label">${e(counted(state.rankings.length,'people').toUpperCase())}</span></div>${state.rankings.length?state.rankings.map((u,i)=>`<div class="full-rank-row"><span class="rank-position ${i<3?'first':''}">${String(i+1).padStart(2,'0')}</span>${avatar(u)}<div class="rank-user"><strong>${e(u.name)}${role(u)}</strong><small>${e(u.badge||tr('ui.rankings.member'))}</small></div><div class="rank-metric posts">${count(u.posts_count)}<small>${e(noun(u.posts_count,'posts'))}</small></div><div class="rank-metric score">${count(u.score)}<small>${e(noun(u.score,'points'))}</small></div></div>`).join(''):empty(tr('ui.rankings.first'),tr('ui.rankings.first_help'),'trophy')}</section>`;}
-/** Personal inbox: messages stay text, never innerHTML from user content. */
-async function renderPrivateMessages(token) {
+function mailboxContent(view) {
+    const composer = $('[data-mailbox-owner]', view);
+    if (!state.user || composer?.dataset.mailboxOwner !== String(state.user.id) || composer.dataset.mailboxLanguage !== activeLocale()) return null;
+    return $('[data-mailbox-content]', view);
+}
+
+function mailboxUrl(folder, page = 1) {
+    const params = new URLSearchParams();
+    if (folder !== 'all') params.set('folder', folder);
+    if (page > 1) params.set('page', String(page));
+    return '#/messages' + (params.size ? '?' + params : '');
+}
+
+/** Personal inbox: message bodies are escaped as text. */
+async function renderPrivateMessages(route, token) {
     const view=$('#view');
     setHeader(tr('ui.messages.title'),tr('ui.messages.subtitle'),tr('ui.messages.eyebrow'));
     if (!state.user) {
         view.innerHTML=`<section class="panel">${empty(tr('ui.messages.login_title'),tr('ui.messages.login_help'),'lock',`<button class="button button-primary" data-action="login">${tx('ui.auth.sign_in')}</button>`)}</section>`;
         return;
     }
+    const folders = [
+        ['all', 'message', tx('ui.messages.folder_all')],
+        ['unread', 'spark', tx('ui.messages.folder_unread')],
+        ['received', 'arrow-left', tx('ui.messages.folder_received')],
+        ['sent', 'send', tx('ui.messages.folder_sent')],
+    ];
+    const folder = folders.find(([value]) => value === route.query.get('folder'))?.[0] || 'all';
+    const query = new URLSearchParams({folder, page: String(state.page)});
     const [result, blockResponse]=await Promise.all([
-        request('/api/messages?page='+encodeURIComponent(state.page)),
+        request('/api/messages?' + query),
         request('/api/messages/blocks'),
     ]);
     if(token!==state.viewToken)return;
+    if (result.current_page > result.last_page) {
+        location.replace(mailboxUrl(folder, result.last_page));
+        return;
+    }
     const blockedUsers=blockResponse.data||[];
     const blockedIds=new Set(blockedUsers.map(u=>Number(u.id)));
     const entries=(result.data||[]).map(m=>{
@@ -796,8 +829,11 @@ async function renderPrivateMessages(token) {
             ${partner&&!blockedIds.has(Number(partner.id))?`<button type="button" class="button button-small button-secondary" data-action="message-block" data-id="${Number(partner.id)}" data-name="${e(partner.name)}">${icon('shield')}${tx('ui.messages.block')}</button>`:''}
         </article>`;
     }).join('');
-    const pager=(result.last_page||1)>1?`<nav class="private-message-pager" aria-label="${tx('ui.messages.pages')}">${Array.from({length:Math.min(7,result.last_page)},(_,i)=>i+Math.max(1,Math.min(state.page-3,result.last_page-6))).map(page=>`<a class="button button-small ${page===state.page?'button-primary':'button-secondary'}" href="#/messages?page=${page}">${page}</a>`).join('')}</nav>`:'';
-    view.innerHTML=`<section class="panel private-message-compose"><div class="discussion-toolbar"><h2>${tx('ui.messages.compose')}</h2><small>${tx('ui.messages.unread_count',{count:Number(result.unread)||0})}</small></div>
+    const currentPage = result.current_page;
+    const lastPage = result.last_page;
+    const pager = lastPage > 1 ? `<nav class="private-message-pager" aria-label="${tx('ui.messages.pages')}">${Array.from({length: Math.min(7, lastPage)}, (_, i) => i + Math.max(1, Math.min(currentPage - 3, lastPage - 6))).map(page => `<a class="button button-small ${page === currentPage ? 'button-primary' : 'button-secondary'}" href="${e(mailboxUrl(folder, page))}"${page === currentPage ? ' aria-current="page"' : ''}>${count(page)}</a>`).join('')}</nav>` : '';
+    if (!mailboxContent(view)) {
+        view.innerHTML=`<section class="panel private-message-compose" data-mailbox-owner="${Number(state.user.id)}" data-mailbox-language="${e(activeLocale())}"><div class="discussion-toolbar"><h2>${tx('ui.messages.compose')}</h2><small data-mailbox-unread role="status"></small></div>
         <form data-form="private-message"><div class="form-error" role="alert"></div>
         <label class="field"><span>${tx('ui.messages.recipient')}</span><input name="recipient_query" minlength="2" maxlength="50" autocomplete="off" placeholder="${tx('ui.messages.recipient_placeholder')}"><small>${tx('ui.messages.recipient_help')}</small></label>
         <button type="button" class="button button-small button-secondary" data-action="message-find">${icon('search')}${tx('ui.messages.recipient_search')}</button>
@@ -806,8 +842,22 @@ async function renderPrivateMessages(token) {
         <button type="button" class="button button-small button-secondary" data-action="message-block-selected">${icon('shield')}${tx('ui.messages.block_selected')}</button>
         <label class="field"><span>${tx('ui.messages.body')}</span><textarea name="body" minlength="1" maxlength="4000" required placeholder="${tx('ui.messages.body_placeholder')}"></textarea></label>
         <div class="form-footer"><button type="submit" class="button button-primary">${icon('send')}${tx('ui.messages.send')}</button></div></form></section>
+        <div data-mailbox-content></div>`;
+    }
+    const unreadStatus = $('[data-mailbox-unread]', view);
+    const unreadLabel = tr('ui.messages.unread_count', {count: count(Number(result.unread) || 0)});
+    if (unreadStatus.textContent !== unreadLabel) unreadStatus.textContent = unreadLabel;
+    const folderEmpty = {
+        unread: tr('ui.messages.unread_empty'),
+        received: tr('ui.messages.received_empty'),
+        sent: tr('ui.messages.sent_empty'),
+    };
+    $('[data-mailbox-content]', view).innerHTML = `
         <section class="panel private-message-inbox"><div class="discussion-toolbar"><h2>${tx('ui.messages.mailbox')}</h2></div>
-            ${entries||empty(tr('ui.messages.empty'),tr('ui.messages.empty_help'),'message')}${pager}</section>
+            <nav class="wx-mailbox-nav topic-tabs" aria-label="${tx('ui.messages.folders')}">
+                ${folders.map(([value, symbol, label]) => `<a class="topic-tab${value === folder ? ' active' : ''}" href="${mailboxUrl(value)}"${value === folder ? ' aria-current="page"' : ''}>${icon(symbol)}${label}</a>`).join('')}
+            </nav>
+            ${entries || (folder === 'all' ? empty(tr('ui.messages.empty'), tr('ui.messages.empty_help')) : empty(folderEmpty[folder], ''))}${pager}</section>
         <section class="panel private-message-inbox"><div class="discussion-toolbar"><h2>${tx('ui.messages.blocks_title')}</h2></div>
             <p class="form-note">${tx('ui.messages.blocks_help')}</p>
             ${blockedUsers.length?blockedUsers.map(u=>`<article class="private-message-row"><div class="private-message-heading"><strong>${e(u.name)} (#${Number(u.id)})</strong></div><button type="button" class="button button-small button-secondary" data-action="message-unblock" data-id="${Number(u.id)}">${icon('unlock')}${tx('ui.messages.unblock')}</button></article>`).join(''):`<p class="form-note">${tx('ui.messages.blocks_empty')}</p>`}
@@ -1261,7 +1311,13 @@ case 'message-unblock':confirmModal(tr('ui.messages.unblock_title'),tr('ui.messa
     closeDialog();await navigate();toast(tr('ui.messages.unblocked_notice'));
 },false);break;
 case 'message-report':reportMessageModal(id);break;
-case 'message-read':await request(`/api/messages/${id}/read`,{method:'PATCH'});await navigate();break;
+case 'message-read':
+    await request(`/api/messages/${id}/read`, {method: 'PATCH'});
+    if (button.isConnected) {
+        await navigate();
+        ($('[data-action="message-read"]') || $('.wx-mailbox-nav [aria-current="page"]'))?.focus({preventScroll: true});
+    }
+    break;
 case 'message-hide':confirmModal(tr('ui.messages.hide_title'),tr('ui.messages.hide_confirm'),tr('ui.messages.hide'),async()=>{await request(`/api/messages/${id}`,{method:'DELETE'});closeDialog();await navigate();toast(tr('ui.messages.hidden_notice'));});break;
 case 'retry-view':await navigate();break;
 case 'retry-bootstrap':await init();break;
@@ -1338,7 +1394,18 @@ case 'login':case 'register':{await request('/api/auth/'+type,{method:'POST',bod
 case 'forgot-password':{const r=await request('/api/auth/password/forgot',{method:'POST',body:{email:values.email}});modal(tr('ui.auth.forgot_title'),tr('ui.auth.forgot_subtitle'),`<p class="form-note">${e(r.message)}</p><div class="auth-switch"><button data-action="login">${tx('ui.auth.back_to_login')}</button></div>`,false,'check-circle');}break;
 case 'reset-password':{const r=await request('/api/auth/password/reset',{method:'POST',body:values});closeDialog();history.replaceState(null,'',location.pathname+location.search+'#/login');await navigate();toast(r.message);}break;
 case 'private-message-report':await request(`/api/messages/${Number(form.dataset.id)}/report`,{method:'POST',body:{reason:values.reason,details:values.details||null}});closeDialog();toast(tr('ui.reports.sent'));break;
-case 'private-message':{const result=await request('/api/messages',{method:'POST',body:{recipient_id:Number(values.recipient_id),body:values.body}});form.reset();await navigate();toast(result.message||tr('ui.messages.sent_notice'));}break;
+case 'private-message': {
+    const result = await request('/api/messages', {method: 'POST', body: {recipient_id: Number(values.recipient_id), body: values.body}});
+    if (form.isConnected) {
+        if (form.elements.body.value === values.body && form.elements.recipient_id.value === values.recipient_id) {
+            form.reset();
+            clearMessageRecipients(form);
+        }
+        await navigate();
+    }
+    toast(result.message || tr('ui.messages.sent_notice'));
+    break;
+}
 case 'shout':{if(!values.body?.trim())return;const r=await request('/api/shouts',{method:'POST',body:{body:values.body.trim()}});$('input[name=body]',form).value='';if(r.shout&&!state.shouts.some(s=>s.id===r.shout.id)){state.shouts.push(r.shout);state.lastShoutId=Math.max(state.lastShoutId,Number(r.shout.id));state.shouts=state.shouts.slice(-100);paintShouts();}else await refreshShouts();$$('[data-shout-list]').forEach(el=>el.scrollTop=el.scrollHeight);}break;
 case 'new-topic':{const submitted=draftSnapshot(form);saveDraft(form);const file=$('input[name=attachment]',form)?.files[0];const r=await request('/api/threads',{method:'POST',body:{title:values.title,category_id:Number(values.category_id),body:values.body}});clearPublishedDraft(form,submitted);closeDialog();const threadId=r.thread.id;location.hash='/thread/'+threadId;window.scrollTo({top:0,behavior:'instant'});toast(tr('ui.topic.published'));if(file){try{const detail=await request(`/api/threads/${threadId}`);const first=detail.posts?.[0];if(!first)throw new Error(tr('ui.topic.first_post_missing'));const fd=new FormData();fd.append('file',file);await request(`/api/posts/${first.id}/attachments`,{method:'POST',body:fd});if(state.route?.name==='thread'&&state.route.id===threadId)await navigate();toast(tr('ui.attachment.added'));}catch(err){toast(tr('ui.topic.attachment_failed',{message:err.message}),true);}}await updateStats();}break;
 case 'reply': {
@@ -1391,7 +1458,13 @@ async function updateStats() {
     }
 }
 document.addEventListener('submit',async event=>{const form=event.target;if(!form.dataset.form)return;event.preventDefault();if(form.dataset.busy==='1')return;form.dataset.busy='1';const error=$('.form-error',form);if(error)error.textContent='';const buttons=$$('button[type=submit]',form);buttons.forEach(b=>{b.disabled=true;b.setAttribute('aria-busy','true');});try{await submitForm(form);}catch(err){if(error&&error.isConnected)error.textContent=err.message;else toast(err.message,true);}finally{form.dataset.busy='0';buttons.forEach(b=>{b.disabled=false;b.removeAttribute('aria-busy');});}});
-document.addEventListener('input',event=>{if(event.target.matches('[data-form="private-message"] [name="recipient_query"]')){const form=event.target.closest('form');const selection=$('[name="recipient_id"]',form);if(selection)selection.innerHTML=`<option value="">${tx('ui.messages.recipient_choose')}</option>`;const status=$('[data-recipient-status]',form);if(status)status.textContent='';}});
+function clearMessageRecipients(form) {
+    form.elements.recipient_id.innerHTML = `<option value="">${tx('ui.messages.recipient_choose')}</option>`;
+    $('[data-recipient-status]', form).textContent = '';
+}
+document.addEventListener('input', event => {
+    if (event.target.matches('[data-form="private-message"] [name="recipient_query"]')) clearMessageRecipients(event.target.form);
+});
 document.addEventListener('change',event=>{if(event.target.id==='locale-picker'){changeLocale(event.target);return;}if(event.target.matches('[data-form="import"] input[name=file]')){state.importPreviewOK=false;state.importFile=event.target.files[0]||null;state.importReport=null;const result=$('#import-result');if(result)result.innerHTML='';}});
 $('#sidebar-backdrop').addEventListener('click',closeSidebar);
 dialog.addEventListener('close', flushDrafts);

@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Filter private messages by unread, received or sent. Switching folders keeps the message you are composing.
 - Search topic titles and posts in your bookmarks, and narrow the results by category. The filters stay in the address when sorting or paging through the collection.
 - Preview formatting in the editor before publishing topics, replies and edits. The preview uses the same Markdown or BBCode renderer as published posts.
 - Follow discussions and filter your list to topics with new replies. Jump to the first unread reply and keep your reading position as you scroll. Follow access uses the same category permissions as the forum.

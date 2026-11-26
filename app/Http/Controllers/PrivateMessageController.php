@@ -29,12 +29,21 @@ class PrivateMessageController extends Controller
     public function index(Request $request): JsonResponse
     {
         $id = $this->allowAccount($request);
+        $data = $request->validate(['folder' => 'nullable|string|in:all,unread,received,sent']);
         // Sender and recipient independently control visibility of their copy.
         // The other participant's copy remains available when one hides theirs.
-        $query = DB::table('private_messages')->where(fn ($q) => $q
+        $visible = DB::table('private_messages')->where(fn ($q) => $q
             ->where(fn ($sender) => $sender->where('sender_id', $id)->whereNull('sender_hidden_at'))
             ->orWhere(fn ($recipient) => $recipient->where('recipient_id', $id)->whereNull('recipient_hidden_at')));
-        $messages = (clone $query)->orderByDesc('id')->paginate(30);
+        $received = DB::table('private_messages')->where('recipient_id', $id)->whereNull('recipient_hidden_at');
+        $unread = (clone $received)->whereNull('read_at');
+        $query = match ($data['folder'] ?? 'all') {
+            'received' => $received,
+            'unread' => clone $unread,
+            'sent' => DB::table('private_messages')->where('sender_id', $id)->whereNull('sender_hidden_at'),
+            default => $visible,
+        };
+        $messages = $query->orderByDesc('id')->paginate(30);
         $rows = $messages->getCollection();
         $ids = $rows->flatMap(fn ($m) => [(int) $m->sender_id, (int) $m->recipient_id])->unique()->all();
         $users = DB::table('users')->whereIn('id', $ids)->get()->keyBy('id');
@@ -55,12 +64,11 @@ class PrivateMessageController extends Controller
                 'outgoing' => (int) $m->sender_id === $id,
             ];
         })->values();
-        $unread = (clone $query)->where('recipient_id', $id)->whereNull('read_at')->count();
         return response()->json([
             'data' => $data,
             'current_page' => $messages->currentPage(),
             'last_page' => $messages->lastPage(),
-            'unread' => $unread,
+            'unread' => $unread->count(),
         ]);
     }
 

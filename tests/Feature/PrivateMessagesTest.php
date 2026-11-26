@@ -111,9 +111,42 @@ class PrivateMessagesTest extends TestCase
             ->assertJsonPath('last_page', 2)
             ->assertJsonPath('data.0.body', 'Message 35');
         $this->getJson('/api/messages?page=2')->assertOk()->assertJsonCount(5, 'data');
+        $this->getJson('/api/messages?folder=sent&page=2')->assertOk()
+            ->assertJsonCount(5, 'data')->assertJsonPath('current_page', 2)->assertJsonPath('last_page', 2);
         $this->actingAs($c);
         $this->getJson('/api/messages')->assertOk()->assertJsonCount(1, 'data')
             ->assertJsonPath('data.0.body', 'Other conversation');
+    }
+
+    public function test_mailbox_folders_filter_visible_copies_and_keep_the_global_unread_count(): void
+    {
+        $reader = $this->account('Reader', 'reader-folders@example.test');
+        $partner = $this->account('Partner', 'partner-folders@example.test');
+        $other = $this->account('Other', 'other-folders@example.test', 'admin');
+        $this->getJson('/api/messages?folder=unread')->assertUnauthorized();
+
+        $send = fn (User $sender, User $recipient, string $body) => $this->actingAs($sender)
+            ->postJson('/api/messages', ['recipient_id' => $recipient->id, 'body' => $body])
+            ->assertCreated()->json('id');
+        $read = $send($partner, $reader, 'Previously read');
+        $unread = $send($partner, $reader, 'Unread message');
+        $hidden = $send($partner, $reader, 'Hidden from the reader');
+        $sent = $send($reader, $partner, 'Sent by the reader');
+        $send($partner, $other, 'An unrelated conversation');
+
+        $this->actingAs($reader)->patchJson('/api/messages/'.$read.'/read')->assertOk();
+        $this->deleteJson('/api/messages/'.$hidden)->assertOk();
+        $this->getJson('/api/messages?folder=invalid')->assertUnprocessable()->assertJsonValidationErrors('folder');
+
+        foreach (['all' => [$sent, $unread, $read], 'unread' => [$unread], 'received' => [$unread, $read], 'sent' => [$sent]] as $folder => $expected) {
+            $response = $this->getJson('/api/messages?folder='.$folder)->assertOk()->assertJsonPath('unread', 1);
+            $this->assertSame($expected, array_column($response->json('data'), 'id'));
+        }
+
+        $this->patchJson('/api/messages/'.$unread.'/read')->assertOk();
+        $this->getJson('/api/messages?folder=unread')->assertOk()->assertJsonCount(0, 'data')->assertJsonPath('unread', 0);
+        $this->actingAs($partner)->getJson('/api/messages?folder=sent')->assertOk()->assertJsonFragment(['id' => $hidden]);
+        $this->actingAs($other)->getJson('/api/messages?folder=sent')->assertOk()->assertJsonCount(0, 'data');
     }
 
     public function test_recipient_search_disambiguates_names_without_exposing_account_details(): void
