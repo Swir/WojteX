@@ -23,6 +23,8 @@ expected = {
     ('PATCH', 'api/threads/{id}'),
     ('DELETE', 'api/threads/{id}'),
     ('POST', 'api/threads/{id}/bookmark'),
+    ('PUT', 'api/threads/{id}/bookmark'),
+    ('DELETE', 'api/threads/{id}/bookmark'),
     ('PUT', 'api/threads/{id}/follow'),
     ('DELETE', 'api/threads/{id}/follow'),
     ('PUT', 'api/threads/{id}/follow/read'),

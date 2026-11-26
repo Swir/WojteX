@@ -244,18 +244,46 @@ class ForumController extends Controller
         // between Forum::thread() and the toggle. A single guarded SQL
         // mutation must require CURRENT account and thread existence. The
         // unique bookmark pair remains protected against duplicate INSERTs.
-        if ($exists) {
-            $changed=BookmarkToggleQuery::eligibleDelete($id,$actorId)->delete();
-        } else {
-            $changed=DB::table('bookmarks')->insertOrIgnoreUsing(
-                ['thread_id','user_id','created_at','updated_at'],
-                BookmarkToggleQuery::eligibleInsert($id,$actorId,now()->toDateTimeString())
-            );
-        }
+        $changed = $this->writeBookmarkRow($id, $actorId, !$exists);
         // Do not claim toggled=true when a concurrent request, ban, or thread
         // deletion prevented the write. A stale request earns no false success.
         abort_unless($changed===1,403,__('server.category_post_forbidden'));
         return response()->json(['bookmarked'=>!$exists]);
+    }
+
+    public function saveBookmark(Request $request, int $id)
+    {
+        return $this->setBookmark($request, $id, true);
+    }
+
+    public function removeBookmark(Request $request, int $id)
+    {
+        return $this->setBookmark($request, $id, false);
+    }
+
+    private function setBookmark(Request $request, int $id, bool $desired)
+    {
+        $user = $request->user();
+        abort_unless(Forum::visibleThreads($user)->where('t.id', $id)->exists(), 404, __('server.thread_unavailable'));
+        $actorId = (int) $user->id;
+
+        $this->writeBookmarkRow($id, $actorId, $desired);
+        $bookmarked = DB::table('bookmarks')->where(['thread_id' => $id, 'user_id' => $actorId])->exists();
+        abort_unless($bookmarked === $desired, 403, __('server.category_post_forbidden'));
+
+        return response()->json(['bookmarked' => $bookmarked]);
+    }
+
+    private function writeBookmarkRow(int $id, int $actorId, bool $bookmarked): int
+    {
+        if (!$bookmarked) {
+            return BookmarkToggleQuery::eligibleDelete($id, $actorId)->delete();
+        }
+
+        return DB::table('bookmarks')->insertOrIgnoreUsing(
+            ['thread_id', 'user_id', 'created_at', 'updated_at'],
+            BookmarkToggleQuery::eligibleInsert($id, $actorId, now()->toDateTimeString())
+        );
     }
 
     public function editPost(Request $request,int $id)

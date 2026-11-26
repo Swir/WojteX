@@ -606,6 +606,36 @@ class ForumSecurityTest extends TestCase
         $this->actingAs($reader)->getJson('/api/threads?bookmarked=1')->assertOk()->assertJsonCount(0, 'data');
     }
 
+    public function test_saving_and_removing_the_same_bookmark_multiple_times_is_idempotent(): void
+    {
+        $author = $this->user();
+        $reader = $this->user();
+        $other = $this->user();
+        $category = $this->category();
+        [$thread] = $this->thread($author, $category);
+        $bookmark = '/api/threads/'.$thread.'/bookmark';
+
+        $this->putJson($bookmark)->assertUnauthorized();
+        $this->deleteJson($bookmark)->assertUnauthorized();
+        $this->actingAs($reader);
+        $this->putJson($bookmark)->assertOk()->assertExactJson(['bookmarked' => true]);
+        $this->putJson($bookmark)->assertOk()->assertExactJson(['bookmarked' => true]);
+        $this->assertDatabaseCount('bookmarks', 1);
+        $this->getJson('/api/threads')->assertOk()->assertJsonPath('data.0.bookmarked', true);
+
+        $this->actingAs($other)->putJson($bookmark)->assertOk();
+        $this->actingAs($reader);
+        $this->deleteJson($bookmark)->assertOk()->assertExactJson(['bookmarked' => false]);
+        $this->deleteJson($bookmark)->assertOk()->assertExactJson(['bookmarked' => false]);
+        $this->getJson('/api/threads?bookmarked=1')->assertOk()->assertJsonCount(0, 'data');
+        $this->assertDatabaseMissing('bookmarks', ['thread_id' => $thread, 'user_id' => $reader->id]);
+        $this->assertDatabaseHas('bookmarks', ['thread_id' => $thread, 'user_id' => $other->id]);
+
+        DB::table('categories')->where('id', $category)->update(['is_private' => true]);
+        $this->actingAs($other)->putJson($bookmark)->assertNotFound();
+        $this->deleteJson($bookmark)->assertNotFound();
+    }
+
     public function test_following_tracks_new_replies_and_keeps_read_progress_monotonic(): void
     {
         $author = $this->user();

@@ -348,10 +348,48 @@ function renderDirectory() {
         : `<div class="panel">${empty(tr('ui.nav.no_categories'), tr('ui.directory.empty'), 'layers')}</div>`;
 }
 function categoryTag(category){return category?`<a class="tag" href="#/category/${Number(category.id)}" style="--tone:${tone(category.color)}">${e(category.name)}</a>`:'';}
+
+function bookmarkAction(bookmarked) {
+    return bookmarked ? tr('ui.topic.remove_bookmark') : tr('ui.topic.save');
+}
+
+async function changeBookmark(button, id) {
+    if (!ensureAuth()) return;
+    const account = state.user.id;
+    const hash = location.hash;
+    const rowIndex = $$('#forum-list .wx-topic-bookmark').indexOf(button);
+    const method = button.getAttribute('aria-pressed') === 'true' ? 'DELETE' : 'PUT';
+    const {bookmarked} = await request(`/api/threads/${id}/bookmark`, {method});
+    if (state.user?.id !== account) return;
+
+    if (state.thread?.thread.id === id) state.thread.thread.bookmarked = bookmarked;
+    toast(bookmarked ? tr('ui.topic.saved_to_collection') : tr('ui.topic.removed_from_saved'));
+    if (routeInfo().name === 'saved') {
+        const listVersion = state.viewToken + 1;
+        await navigate();
+        if (hash === location.hash && rowIndex >= 0 && state.viewToken === listVersion) {
+            const buttons = $$('#forum-list .wx-topic-bookmark');
+            (buttons[rowIndex] || buttons.at(-1) || $('#main-content')).focus({preventScroll: true});
+        }
+        return;
+    }
+
+    for (const control of $$(`[data-action="bookmark"][data-id="${id}"]`)) {
+        control.setAttribute('aria-pressed', String(bookmarked));
+        control.title = bookmarkAction(bookmarked);
+        const label = $('[data-bookmark-label]', control);
+        if (label) {
+            control.classList.toggle('button-primary', bookmarked);
+            control.classList.toggle('button-secondary', !bookmarked);
+            label.textContent = bookmarked ? tr('ui.topic.saved') : tr('ui.topic.save');
+        }
+    }
+}
+
 function topicRow(topic) {
     const url = `#/thread/${Number(topic.id)}`;
     const timestamp = topic.updated_at || topic.created_at;
-    return `<article class="topic-row">
+    return `<article class="topic-row${state.user ? ' wx-topic-row-personal' : ''}">
         ${avatar(topic.author)}
         <div class="topic-row-content">
             <div class="topic-tags">
@@ -366,13 +404,15 @@ function topicRow(topic) {
             <div class="topic-meta">
                 <span class="author-name">${e(topic.author?.name || tr('ui.user.fallback'))}</span><span class="meta-dot">·</span>
                 <time title="${e(dateTitle(timestamp))}">${e(relative(timestamp))}</time>
-                ${topic.bookmarked ? `<span title="${tx('ui.topic.saved_title')}">${icon('bookmark')}</span>` : ''}
             </div>
             ${topic.first_unread_post_id ? `<button type="button" class="text-button wx-mark-thread-read" data-action="mark-thread-read" data-id="${Number(topic.id)}" aria-label="${tx('ui.follow.mark_read_label', {title: topic.title})}">${icon('check-circle')}${tx('ui.follow.mark_read')}</button>` : ''}
         </div>
-        <a href="${url}" class="topic-stats" aria-label="${e(counted(topic.replies_count, 'replies'))}, ${e(counted(topic.views, 'views'))}">
-            <span>${icon('message')}${compact(topic.replies_count)}</span><span class="stat-views">${icon('eye')}${compact(topic.views)}</span>
-        </a>
+        <div class="wx-topic-row-actions">
+            ${state.user ? `<button type="button" class="icon-button wx-topic-bookmark" data-action="bookmark" data-id="${Number(topic.id)}" aria-pressed="${Boolean(topic.bookmarked)}" aria-label="${tx('ui.topic.bookmark_label', {title: topic.title})}" title="${e(bookmarkAction(topic.bookmarked))}">${icon('bookmark')}</button>` : ''}
+            <a href="${url}" class="topic-stats" aria-label="${e(counted(topic.replies_count, 'replies'))}, ${e(counted(topic.views, 'views'))}">
+                <span>${icon('message')}${compact(topic.replies_count)}</span><span class="stat-views">${icon('eye')}${compact(topic.views)}</span>
+            </a>
+        </div>
     </article>`;
 }
 
@@ -442,7 +482,8 @@ async function renderFeed(route, token) {
     if (unread) query.set('unread', '1');
     const results = await request('/api/threads?' + query);
     if (token !== state.viewToken) return;
-    if (following && results.current_page > results.last_page) {
+    if ((following || route.name === 'saved') && results.current_page > results.last_page) {
+        $('#main-content').focus({preventScroll: true});
         updateRouteQuery({page: results.last_page > 1 ? results.last_page : null});
         return;
     }
@@ -513,7 +554,7 @@ async function renderThread(id,token){
             <div class="topic-meta">${avatar(t.author,'small')}<span class="author-name">${e(t.author?.name||tr('ui.user.fallback'))}</span><span class="meta-dot">·</span><time title="${e(dateTitle(t.created_at))}">${e(relative(t.created_at))}</time><span class="meta-dot">·</span><span>${e(counted(t.views,'views'))}</span></div>
             <div class="thread-head-actions">
                 ${canReply?`<button class="button button-primary" data-action="focus-reply">${icon('message')}${tx('ui.topic.reply')}</button>`:''}
-                <button class="button button-secondary" data-action="bookmark" data-id="${id}" aria-pressed="${!!t.bookmarked}">${icon('bookmark')}${e(t.bookmarked?tr('ui.topic.saved'):tr('ui.topic.save'))}</button>
+                <button type="button" class="button ${t.bookmarked ? 'button-primary' : 'button-secondary'}" data-action="bookmark" data-id="${id}" aria-pressed="${!!t.bookmarked}" aria-label="${tx('ui.topic.save')}" title="${e(bookmarkAction(t.bookmarked))}">${icon('bookmark')}<span data-bookmark-label>${t.bookmarked ? tx('ui.topic.saved') : tx('ui.topic.save')}</span></button>
                 <button type="button" class="button button-secondary wx-follow-button" data-action="follow-thread" data-id="${id}" aria-label="${tx('ui.follow.follow')}" aria-pressed="${!!r.follow}">${followButtonContent(r.follow)}</button>
                 <button class="button button-ghost" data-action="copy-thread">${icon('link')}${tx('ui.topic.copy')}</button>
             </div>
@@ -1114,7 +1155,7 @@ case 'message-hide':confirmModal(tr('ui.messages.hide_title'),tr('ui.messages.hi
 case 'retry-view':await navigate();break;
 case 'retry-bootstrap':await init();break;
 case 'refresh-shouts':await refreshShouts(true);break;
-case 'bookmark':if(ensureAuth()){const r=await request(`/api/threads/${id}/bookmark`,{method:'POST'});button.classList.toggle('button-primary',r.bookmarked);button.classList.toggle('button-secondary',!r.bookmarked);button.innerHTML=icon('bookmark')+e(r.bookmarked?tr('ui.topic.saved'):tr('ui.topic.save'));if(state.thread)state.thread.thread.bookmarked=r.bookmarked;toast(r.bookmarked?tr('ui.topic.saved_to_collection'):tr('ui.topic.removed_from_saved'));}break;
+case 'bookmark':await changeBookmark(button,id);break;
 case 'mark-thread-read': {
     const hash = location.hash;
     await request(`/api/threads/${id}/follow/read-all`, {method: 'PUT'});

@@ -30,6 +30,8 @@ Route::middleware('installed')->group(function(){
                 Route::patch('/threads/{id}',[ForumController::class,'moderate'])->whereNumber('id');
                 Route::delete('/threads/{id}',[ForumController::class,'deleteThread'])->whereNumber('id');
                 Route::post('/threads/{id}/bookmark',[ForumController::class,'bookmark'])->whereNumber('id');
+                Route::put('/threads/{id}/bookmark',[ForumController::class,'saveBookmark'])->whereNumber('id');
+                Route::delete('/threads/{id}/bookmark',[ForumController::class,'removeBookmark'])->whereNumber('id');
                 Route::put('/threads/{id}/follow',[ThreadFollowController::class,'store'])->whereNumber('id');
                 Route::delete('/threads/{id}/follow',[ThreadFollowController::class,'destroy'])->whereNumber('id');
                 Route::put('/threads/{id}/follow/read-all',[ThreadFollowController::class,'readAll'])->whereNumber('id');
