@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Enter a page number to jump directly to it in long discussions and topic lists.
 - Category and discussion pages show the path through parent categories, with links back to each level and the category directory.
 - Filter the category directory by category name, description or parent category. The filter accepts searches without accents and stays in the address.
 - See unread private message counts in navigation and a marker on the mobile menu. The background check runs only in visible tabs outside the mailbox.

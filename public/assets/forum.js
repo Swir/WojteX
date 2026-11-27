@@ -646,7 +646,29 @@ async function renderFeed(route, token) {
             ${pagination(results.current_page || 1, results.last_page || 1, results.total || 0)}
         </section>`;
 }
-function pagination(current,last,total,label='topics'){if(last<=1)return '';return `<div class="pagination"><span>${tx('ui.pagination.summary',{current:count(current),last:count(last),total:counted(total,label)})}</span><div class="pagination-actions"><button class="button button-ghost" data-action="page" data-page="${current-1}" ${current<=1?'disabled':''} aria-label="${tx('ui.pagination.previous')}">${icon('arrow-left')}</button><button class="button button-ghost" data-action="page" data-page="${current+1}" ${current>=last?'disabled':''} aria-label="${tx('ui.pagination.next')}">${icon('arrow-right')}</button></div></div>`;}
+function pagination(current, last, total, label = 'topics') {
+    if (last <= 1) return '';
+    return `<nav class="pagination" aria-label="${tx('ui.pagination.navigation')}">
+        <span>${tx('ui.pagination.summary', {current: count(current), last: count(last), total: counted(total, label)})}</span>
+        <div class="pagination-actions">
+            <button type="button" class="button button-ghost" data-action="page" data-page="${current - 1}" ${current <= 1 ? 'disabled' : ''} aria-label="${tx('ui.pagination.previous')}">${icon('arrow-left')}</button>
+            <form data-form="page-jump" class="wx-page-jump">
+                <input type="number" name="page" min="1" max="${last}" step="1" value="${current}" inputmode="numeric" required aria-label="${tx('ui.pagination.page_number')}">
+                <button type="submit" class="button button-secondary">${tx('ui.pagination.jump')}</button>
+            </form>
+            <button type="button" class="button button-ghost" data-action="page" data-page="${current + 1}" ${current >= last ? 'disabled' : ''} aria-label="${tx('ui.pagination.next')}">${icon('arrow-right')}</button>
+        </div>
+    </nav>`;
+}
+
+function goToPage(page) {
+    const next = {page};
+    if (state.route?.name === 'thread') Object.assign(next, {post: null, unread: null, latest: null});
+    $('#main-content').focus({preventScroll: true});
+    updateRouteQuery(next);
+    const behavior = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
+    window.scrollTo({top: 0, behavior});
+}
 async function renderThread(id,token){
     const query = new URLSearchParams();
     const targetPost = state.route.query.get('post');
@@ -1721,13 +1743,7 @@ case 'thread-post-search-result': {
 }
 case 'sort':updateRouteQuery({sort:button.dataset.sort,page:null});break;
 case 'clear-saved-filters':$('#saved-query')?.focus({preventScroll:true});updateRouteQuery({q:null,category:null,page:null});break;
-case 'page': {
-    const next = {page: button.dataset.page};
-    if (state.route?.name === 'thread') Object.assign(next, {post: null, unread: null, latest: null});
-    updateRouteQuery(next);
-    window.scrollTo({top: 0, behavior: 'smooth'});
-    break;
-}
+case 'page':goToPage(button.dataset.page);break;
 case 'message-find':{
     const form=button.closest('[data-form="private-message"]');
     if(!form)break;
@@ -1863,6 +1879,11 @@ case 'category-visibility':{const c=(state.admin.categories||state.bootstrap.cat
 document.addEventListener('click',async event=>{const button=event.target.closest('[data-action]');if(!button||button.disabled)return;if(button.tagName!=='A')event.preventDefault();if(button.dataset.busy==='1')return;const immediate=['toggle-menu','appearance','reset-appearance','login','register','account','close-dialog','close-on-nav','new-topic','discard-draft','overwrite-draft','quick-search','thread-post-search','thread-post-search-result','sort','page','quote','edit-post','attach-post','clear-post-attachment','delete-post','delete-thread','delete-shout','format','editor-preview','message-reply','admin-tab','ban-user','group-delete','new-category','edit-category','category-visibility'];const busy=!immediate.includes(button.dataset.action);try{if(busy){button.dataset.busy='1';button.setAttribute('aria-busy','true');button.disabled=true;}await handleAction(button,event);}catch(err){toast(err.message,true);if(err.status===401){state.user=null;setUnreadMessages(0,-Infinity);authModal('login');}}finally{if(busy){button.dataset.busy='0';button.removeAttribute('aria-busy');button.disabled=false;}}});
 
 async function submitForm(form){const type=form.dataset.form;const values=Object.fromEntries(new FormData(form).entries());switch(type){
+case 'page-jump': {
+    const page = form.elements.page;
+    if (page.validity.valid) goToPage(page.valueAsNumber);
+    break;
+}
 case 'thread-post-search':
     if (Array.from(values.q.trim()).length < 2) throw new Error(tr('ui.thread_search.minimum'));
     await loadThreadPostSearch(form, values.q.trim());
