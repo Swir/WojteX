@@ -26,6 +26,13 @@ class PrivateMessageController extends Controller
         return (int) $request->user()->id;
     }
 
+    public function unreadCount(Request $request): JsonResponse
+    {
+        $id = $this->allowAccount($request);
+
+        return response()->json(['unread' => PrivateMessageReadReceiptQuery::unread($id)->count()]);
+    }
+
     public function index(Request $request): JsonResponse
     {
         $id = $this->allowAccount($request);

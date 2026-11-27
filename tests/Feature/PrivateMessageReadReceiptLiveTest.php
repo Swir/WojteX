@@ -62,6 +62,31 @@ class PrivateMessageReadReceiptLiveTest extends TestCase
         $this->assertNull(DB::table('private_messages')->where('id',$id)->value('read_at'));
     }
 
+    public function test_unread_count_reports_only_visible_incoming_messages_for_the_active_account(): void
+    {
+        $sender = $this->account('Sender');
+        $recipient = $this->account('Recipient');
+        $other = $this->account('Other');
+        $message = fn (User $from, User $to, array $attributes = []) => DB::table('private_messages')->insertGetId([
+            ...$attributes, 'sender_id' => $from->id, 'recipient_id' => $to->id,
+            'body' => 'Synthetic private message', 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $visible = $message($sender, $recipient, ['sender_hidden_at' => now()]);
+        $message($sender, $recipient, ['recipient_hidden_at' => now()]);
+        $message($sender, $recipient, ['read_at' => now()]);
+        $message($recipient, $other);
+        $message($sender, $other);
+
+        $url = '/api/messages/unread-count';
+        $this->getJson($url)->assertUnauthorized();
+        $this->actingAs($other)->getJson($url)->assertOk()->assertExactJson(['unread' => 2]);
+        $this->actingAs($recipient)->getJson($url.'?user_id='.$other->id)->assertOk()->assertExactJson(['unread' => 1]);
+        $this->patchJson('/api/messages/'.$visible.'/read')->assertOk();
+        $this->getJson($url)->assertOk()->assertExactJson(['unread' => 0]);
+        DB::table('users')->where('id', $recipient->id)->update(['is_banned' => true]);
+        $this->getJson($url)->assertForbidden();
+    }
+
     public function test_mark_all_reads_only_visible_incoming_messages_through_the_loaded_cutoff(): void
     {
         $sender = $this->account('Sender');

@@ -11,11 +11,11 @@
     <link rel="icon" type="image/svg+xml" href="/assets/wojtex.svg?v=0.1.0-beta.1">
     <link rel="stylesheet" href="/assets/forum.css?v=0.1.0-beta.1">
     <script type="application/json" id="veyra-i18n">{!! json_encode($localePayload, JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT|JSON_UNESCAPED_UNICODE) !!}</script>
-    <link rel="stylesheet" href="/assets/wojtex.css?v=0.1.0-beta.1-edit-conflicts1">
+    <link rel="stylesheet" href="/assets/wojtex.css?v=0.1.0-beta.1-unread-mail1">
     <link rel="stylesheet" href="/assets/custom.css?v=0.1.0-beta.1">
     <script src="/assets/wojtex-appearance.js?v=0.1.0-beta.1"></script>
     <script src="/assets/wojtex-drafts.js?v=0.1.0-beta.1-edit-drafts1" defer></script>
-    <script src="/assets/forum.js?v=0.1.0-beta.1-edit-conflicts1" defer></script>
+    <script src="/assets/forum.js?v=0.1.0-beta.1-unread-mail1" defer></script>
 </head>
 <body>
     <a class="skip-link" href="#main-content" data-i18n="ui.nav.skip">{{ __('ui.nav.skip') }}</a>
@@ -32,7 +32,7 @@
             <a href="#/categories" class="nav-item" data-nav="categories"><span data-icon="layers"></span><span data-i18n="ui.directory.title">{{ __('ui.directory.title') }}</span></a>
             <a href="#/chat" class="nav-item" data-nav="chat"><span data-icon="chat"></span><span data-i18n="ui.shout.title">{{ __('ui.shout.title') }}</span></a>
             <a href="#/rankings" class="nav-item" data-nav="rankings"><span data-icon="trophy"></span><span data-i18n="ui.nav.rankings">{{ __('ui.nav.rankings') }}</span></a>
-            <a href="#/messages" class="nav-item" data-nav="messages" hidden><span data-icon="message"></span><span data-i18n="ui.messages.title">{{ __('ui.messages.title') }}</span></a>
+            <a href="#/messages" class="nav-item" data-nav="messages" hidden><span data-icon="message"></span><span data-i18n="ui.messages.title">{{ __('ui.messages.title') }}</span><span class="wx-mail-badge" data-unread-message-count aria-hidden="true" hidden></span></a>
             <a href="#/saved" class="nav-item" data-nav="saved"><span data-icon="bookmark"></span><span data-i18n="ui.nav.saved">{{ __('ui.nav.saved') }}</span></a>
             <a href="#/following" class="nav-item" data-nav="following"><span data-icon="bell"></span><span data-i18n="ui.follow.title">{{ __('ui.follow.title') }}</span></a>
         </nav>
@@ -46,7 +46,7 @@
     </aside>
     <div class="app-shell">
         <header class="topbar">
-            <div class="topbar-start"><button class="icon-button mobile-menu" type="button" data-action="toggle-menu" aria-controls="sidebar" aria-expanded="false" aria-label="{{ __('ui.nav.menu_open') }}" data-i18n-aria-label="ui.nav.menu_open"><span data-icon="menu"></span></button><span class="topbar-context"><span data-icon="command"></span><span id="topbar-label">{{ __('ui.nav.center') }}</span></span></div>
+            <div class="topbar-start"><button class="icon-button mobile-menu" type="button" data-action="toggle-menu" aria-controls="sidebar" aria-expanded="false" aria-label="{{ __('ui.nav.menu_open') }}" data-i18n-aria-label="ui.nav.menu_open"><span data-icon="menu"></span><span class="wx-mail-menu-dot" data-unread-message-dot aria-hidden="true" hidden></span></button><span class="topbar-context"><span data-icon="command"></span><span id="topbar-label">{{ __('ui.nav.center') }}</span></span></div>
             <button class="search-box wx-search-trigger" type="button" id="search-trigger" data-action="quick-search" aria-haspopup="dialog" aria-keyshortcuts="/ Control+k Meta+k">
                 <span data-icon="search"></span><span data-i18n="ui.quick_search.open">{{ __('ui.quick_search.open') }}</span><kbd aria-hidden="true">/</kbd>
             </button>

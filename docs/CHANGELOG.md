@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- See unread private message counts in navigation and a marker on the mobile menu. The background check runs only in visible tabs outside the mailbox.
 - The post editor detects edits saved after it opened. Load the current published text for comparison while keeping your draft in the editor.
 - Restore unfinished post edits from a browser draft. If the published post has changed, the editor flags the difference and lets you discard the draft to restore the published text.
 - Use Ctrl or Command with B, I or K for bold, italic and links in post editors. When linking selected text, type the URL immediately to replace the example address.

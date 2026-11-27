@@ -139,6 +139,7 @@ async function loadBootstrap({initial = false} = {}) {
         state.bootstrap=await request(endpoint);
     }
     acceptI18n(state.bootstrap.i18n);state.user=state.bootstrap.user;state.csrf=state.bootstrap.csrf_token||state.csrf;
+    if (previousViewer?.id !== state.user?.id || previousViewer?.created_at !== state.user?.created_at) setUnreadMessages(0, -Infinity);
     if (previousViewer?.id !== state.user?.id || previousViewer?.role !== state.user?.role) {
         ++sidebarViewerGeneration;
         sidebarStarted = false;
@@ -285,13 +286,16 @@ async function navigate() {
         const title = err.status === 404 ? tr('ui.page.content_missing')
             : err.status === 403 ? tr('ui.page.private') : tr('ui.page.load_failed');
         const retry = `<button class="button button-secondary" data-action="retry-view">${tx('ui.common.retry')}</button>`;
-        const target = [401, 403].includes(err.status) ? view : content;
+        const denied = err.status === 401 || err.status === 403;
+        const target = denied ? view : content;
+        if (route.name === 'messages' && denied) setUnreadMessages(0);
         target.innerHTML = `<div class="panel">${empty(title, err.message, err.status === 403 ? 'lock' : 'alert', retry)}</div>`;
     } finally {
         if (token === state.viewToken) {
             view.setAttribute('aria-busy', 'false');
             paintIcons(view);
             startVisibleSidebar();
+            void refreshUnreadMessages();
             if (followingFocus) $(followingFocus, view)?.focus({preventScroll: true});
             if (savedFocus) ($(savedFocus, view) || $('#saved-query', view))?.focus({preventScroll: true});
             if (mailboxNav) {
@@ -850,6 +854,48 @@ async function toggleEditorPreview(button) {
 
 function replyForm(t){if(state.thread?.can_reply===false&&state.user&&!isMod())return `<section class="panel reply-panel">${empty(tr('ui.groups.read_only'),tr('ui.groups.read_only_help'),'lock')}</section>`;if(t.is_locked&&!isMod())return `<section class="panel reply-panel">${empty(tr('ui.post.closed_title'),tr('ui.post.closed_help'),'lock')}</section>`;if(!state.user)return `<section class="panel reply-panel">${empty(tr('ui.post.perspective_title'),tr('ui.post.sign_in_help'),'message',`<button class="button button-primary" data-action="login">${tx('ui.post.sign_in_reply')}</button>`)}</section>`;return `<section class="panel reply-panel" id="reply-panel"><div class="reply-header">${avatar(state.user)}<div><h3>${tx('ui.post.reply_title')}</h3><small>${tx('ui.post.reply_subtitle')}</small></div></div><form data-form="reply" data-thread="${Number(t.id)}"><div class="form-error" role="alert"></div>${editor()}${draftControls()}<div class="reply-bottom"><small>${tx('ui.post.markdown_help')}<br>${tx('ui.post.be_helpful')}</small><button class="button button-primary" type="submit">${tx('ui.post.publish_reply')}${icon('arrow-right')}</button></div></form></section>`;}
 async function renderRankings(token){setHeader(tr('ui.rankings.header'),tr('ui.rankings.subtitle'),tr('ui.rankings.eyebrow'));if(!pluginEnabled('rankings')){$('#view').innerHTML=`<div class="panel">${empty(tr('ui.rankings.disabled'),tr('ui.rankings.disabled_help'),'trophy')}</div>`;return;}const r=await request('/api/rankings');if(token!==state.viewToken)return;state.rankings=r.data||[];renderSidebarRankings();$('#view').innerHTML=`<section class="panel ranking-hero"><div class="empty-icon">${icon('trophy')}</div><div><h2>${tx('ui.rankings.hero')}</h2><p>${tx('ui.rankings.explanation')}</p></div></section><section class="panel"><div class="panel-header"><h2>${tx('ui.rankings.overall')}</h2><span class="minor-label">${e(counted(state.rankings.length,'people').toUpperCase())}</span></div>${state.rankings.length?state.rankings.map((u,i)=>`<div class="full-rank-row"><span class="rank-position ${i<3?'first':''}">${String(i+1).padStart(2,'0')}</span>${avatar(u)}<div class="rank-user"><strong>${e(u.name)}${role(u)}</strong><small>${e(u.badge||tr('ui.rankings.member'))}</small></div><div class="rank-metric posts">${count(u.posts_count)}<small>${e(noun(u.posts_count,'posts'))}</small></div><div class="rank-metric score">${count(u.score)}<small>${e(noun(u.score,'points'))}</small></div></div>`).join(''):empty(tr('ui.rankings.first'),tr('ui.rankings.first_help'),'trophy')}</section>`;}
+let unreadMessagesRequest;
+let unreadMessagesCheckedAt = -Infinity;
+
+function paintUnreadMessages(value) {
+    const unread = Number.isSafeInteger(value) && value > 0 ? value : 0;
+    const nav = $('[data-nav="messages"]');
+    const menu = $('.mobile-menu');
+    const badge = $('[data-unread-message-count]', nav);
+    badge.hidden = !unread;
+    badge.textContent = unread > 99 ? count(99) + '+' : count(unread);
+    $('[data-unread-message-dot]', menu).hidden = !unread;
+
+    const detail = unread ? '. ' + tr('ui.messages.unread_count', {count: count(unread)}) : '';
+    if (unread) nav.setAttribute('aria-label', tr('ui.messages.title') + detail);
+    else nav.removeAttribute('aria-label');
+    menu.setAttribute('aria-label', tr('ui.nav.menu_open') + detail);
+}
+
+function setUnreadMessages(value, checkedAt = Date.now()) {
+    unreadMessagesRequest?.abort();
+    unreadMessagesRequest = null;
+    unreadMessagesCheckedAt = checkedAt;
+    paintUnreadMessages(value);
+}
+
+async function refreshUnreadMessages() {
+    if (!state.user || !state.route || state.route.name === 'messages' || document.visibilityState !== 'visible'
+        || unreadMessagesRequest || Date.now() - unreadMessagesCheckedAt < 60000) return;
+
+    const controller = new AbortController();
+    unreadMessagesRequest = controller;
+    unreadMessagesCheckedAt = Date.now();
+    try {
+        const {unread} = await request('/api/messages/unread-count', {signal: controller.signal});
+        if (unreadMessagesRequest === controller && state.route.name !== 'messages') paintUnreadMessages(unread);
+    } catch (err) {
+        if (unreadMessagesRequest === controller && (err.status === 401 || err.status === 403)) paintUnreadMessages(0);
+    } finally {
+        if (unreadMessagesRequest === controller) unreadMessagesRequest = null;
+    }
+}
+
 function mailboxContent(view) {
     const composer = $('[data-mailbox-owner]', view);
     if (!state.user || composer?.dataset.mailboxOwner !== String(state.user.id) || composer.dataset.mailboxLanguage !== activeLocale()) return null;
@@ -928,6 +974,7 @@ async function renderPrivateMessages(route, token) {
     const unreadStatus = $('[data-mailbox-unread]', view);
     const unreadLabel = tr('ui.messages.unread_count', {count: count(Number(result.unread) || 0)});
     if (unreadStatus.textContent !== unreadLabel) unreadStatus.textContent = unreadLabel;
+    setUnreadMessages(result.unread);
     const folderEmpty = {
         unread: tr('ui.messages.unread_empty'),
         received: tr('ui.messages.received_empty'),
@@ -1738,7 +1785,7 @@ case 'edit-category':categoryModal(id);break;
 case 'category-visibility':{const c=(state.admin.categories||state.bootstrap.categories).find(c=>c.id===id);const makePublic=!!c.is_private;confirmModal(makePublic?tr('ui.admin.public_title'):tr('ui.admin.private_title'),makePublic?tr('ui.admin.public_body',{name:c.name}):tr('ui.admin.private_body',{name:c.name}),makePublic?tr('ui.admin.make_public'):tr('ui.admin.make_private'),async()=>{await request(`/api/admin/categories/${id}`,{method:'PATCH',body:{is_private:!c.is_private}});closeDialog();await loadBootstrap();await refreshAdmin();toast(tr('ui.admin.visibility_saved'));},false);}break;
 }}
 
-document.addEventListener('click',async event=>{const button=event.target.closest('[data-action]');if(!button||button.disabled)return;if(button.tagName!=='A')event.preventDefault();if(button.dataset.busy==='1')return;const immediate=['toggle-menu','appearance','reset-appearance','login','register','account','close-dialog','close-on-nav','new-topic','discard-draft','overwrite-draft','quick-search','thread-post-search','thread-post-search-result','sort','page','quote','edit-post','attach-post','clear-post-attachment','delete-post','delete-thread','delete-shout','format','editor-preview','message-reply','admin-tab','ban-user','group-delete','new-category','edit-category','category-visibility'];const busy=!immediate.includes(button.dataset.action);try{if(busy){button.dataset.busy='1';button.setAttribute('aria-busy','true');button.disabled=true;}await handleAction(button,event);}catch(err){toast(err.message,true);if(err.status===401){state.user=null;authModal('login');}}finally{if(busy){button.dataset.busy='0';button.removeAttribute('aria-busy');button.disabled=false;}}});
+document.addEventListener('click',async event=>{const button=event.target.closest('[data-action]');if(!button||button.disabled)return;if(button.tagName!=='A')event.preventDefault();if(button.dataset.busy==='1')return;const immediate=['toggle-menu','appearance','reset-appearance','login','register','account','close-dialog','close-on-nav','new-topic','discard-draft','overwrite-draft','quick-search','thread-post-search','thread-post-search-result','sort','page','quote','edit-post','attach-post','clear-post-attachment','delete-post','delete-thread','delete-shout','format','editor-preview','message-reply','admin-tab','ban-user','group-delete','new-category','edit-category','category-visibility'];const busy=!immediate.includes(button.dataset.action);try{if(busy){button.dataset.busy='1';button.setAttribute('aria-busy','true');button.disabled=true;}await handleAction(button,event);}catch(err){toast(err.message,true);if(err.status===401){state.user=null;setUnreadMessages(0,-Infinity);authModal('login');}}finally{if(busy){button.dataset.busy='0';button.removeAttribute('aria-busy');button.disabled=false;}}});
 
 async function submitForm(form){const type=form.dataset.form;const values=Object.fromEntries(new FormData(form).entries());switch(type){
 case 'thread-post-search':
@@ -1971,6 +2018,7 @@ function startVisibleSidebar() {
 
 setInterval(() => {
     if (document.visibilityState === 'visible' && hasVisibleShoutbox()) void refreshShouts();
+    void refreshUnreadMessages();
 }, 5000);
 window.addEventListener('resize', startVisibleSidebar);
 document.addEventListener('visibilitychange', () => {
@@ -1981,6 +2029,7 @@ document.addEventListener('visibilitychange', () => {
     }
     readTracker?.refresh();
     if (!state.bootstrap) return;
+    void refreshUnreadMessages();
     const alreadyStarted = sidebarStarted;
     startVisibleSidebar();
     if ((alreadyStarted || state.route?.name === 'chat') && hasVisibleShoutbox()) void refreshShouts(true);

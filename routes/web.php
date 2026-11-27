@@ -51,6 +51,7 @@ Route::middleware('installed')->group(function(){
                 Route::post('/messages/blocks',[PrivateMessageController::class,'blockContact'])->middleware('throttle:10,1');
                 Route::delete('/messages/blocks/{id}',[PrivateMessageController::class,'unblockContact'])->whereNumber('id')->middleware('throttle:10,1');
                 Route::get('/messages/recipients',[PrivateMessageController::class,'recipients'])->middleware('throttle:30,1');
+                Route::get('/messages/unread-count',[PrivateMessageController::class,'unreadCount'])->middleware('throttle:30,1,pm-unread-count');
                 Route::get('/messages',[PrivateMessageController::class,'index']);
                 Route::post('/messages',[PrivateMessageController::class,'send'])->middleware('throttle:10,1');
                 Route::put('/messages/read-all',[PrivateMessageController::class,'markAllRead'])->middleware('throttle:30,1,pm-read-all');
