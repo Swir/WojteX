@@ -82,6 +82,7 @@
   "ui.thread_search.empty": "Brak wyników dla „:query”.",
   "ui.thread_search.more": "Pokaż więcej",
   "ui.directory.title": "Działy forum",
+  "ui.directory.breadcrumb": "Ścieżka nawigacji",
   "ui.directory.subtitle": "Przeglądaj działy i ich poddziały.",
   "ui.directory.empty": "Tu pojawią się działy dostępne dla Ciebie.",
   "ui.directory.view_all": "Wszystkie działy",

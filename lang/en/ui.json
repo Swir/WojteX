@@ -82,6 +82,7 @@
   "ui.thread_search.empty": "No results for “:query”.",
   "ui.thread_search.more": "Show more",
   "ui.directory.title": "Forum categories",
+  "ui.directory.breadcrumb": "Breadcrumbs",
   "ui.directory.subtitle": "Browse categories and their subcategories.",
   "ui.directory.empty": "Categories you can access will appear here.",
   "ui.directory.view_all": "All categories",

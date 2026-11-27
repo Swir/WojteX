@@ -423,6 +423,26 @@ function renderDirectory(route) {
 }
 function categoryTag(category){return category?`<a class="tag" href="#/category/${Number(category.id)}" style="--tone:${tone(category.color)}">${e(category.name)}</a>`:'';}
 
+function categoryBreadcrumbs(category, inThread = false) {
+    const categories = new Map((state.bootstrap.categories || []).map(item => [item.id, item]));
+    const path = [];
+    const seen = new Set();
+    for (let current = category; current && !seen.has(current.id); current = categories.get(current.parent_id)) {
+        seen.add(current.id);
+        path.push({name: current.name, href: `#/category/${Number(current.id)}`});
+    }
+    const items = [
+        {name: tr('ui.common.forum'), href: '#/'},
+        {name: tr('ui.directory.title'), href: '#/categories'},
+        ...path.reverse(),
+    ];
+    if (inThread) items.push({name: tr('ui.topic.topic')});
+    return `<nav class="breadcrumb" aria-label="${tx('ui.directory.breadcrumb')}"><ol>${items.map((item, index) => `<li>
+        ${index ? icon('chevron-right') : ''}
+        ${index === items.length - 1 ? `<span aria-current="page">${e(item.name)}</span>` : `<a href="${item.href}">${e(item.name)}</a>`}
+    </li>`).join('')}</ol></nav>`;
+}
+
 function bookmarkAction(bookmarked) {
     return bookmarked ? tr('ui.topic.remove_bookmark') : tr('ui.topic.save');
 }
@@ -615,6 +635,7 @@ async function renderFeed(route, token) {
         </div>`;
     view.innerHTML = `
         ${route.name === 'home' ? welcomePanel() : ''}
+        ${route.name === 'category' && category ? categoryBreadcrumbs(category) : ''}
         ${category?.is_private ? `<div class="private-category-banner">${icon('lock')} ${tx('ui.feed.private_notice')}</div>` : ''}
         ${['home', 'category'].includes(route.name) ? feedCategories(route) : ''}
         <section class="panel threads-panel" id="forum-list" aria-labelledby="discussion-heading">
@@ -644,11 +665,7 @@ async function renderThread(id,token){
     setHeader(t.title,'',t.category?.name||tr('ui.topic.discussion'));
     $('#main-content').classList.add('wx-thread-page');
     $('#view').innerHTML=`
-        <nav class="breadcrumb" aria-label="${tx('ui.common.forum')}">
-            <a href="#/">${tx('ui.common.forum')}</a>${icon('chevron-right')}
-            <a href="#/category/${Number(t.category_id)}">${e(t.category?.name||tr('ui.topic.category'))}</a>${icon('chevron-right')}
-            <span aria-current="page">${tx('ui.topic.topic')}</span>
-        </nav>
+        ${categoryBreadcrumbs(t.category, true)}
         <section class="panel thread-head" aria-labelledby="thread-title">
             <div class="topic-tags">${categoryTag(t.category)}${t.is_pinned?`<span class="tag tag-pinned">${icon('pin')}${tx('ui.topic.pinned')}</span>`:''}${t.is_locked?`<span class="tag tag-neutral">${icon('lock')}${tx('ui.topic.closed')}</span>`:''}</div>
             <h1 id="thread-title">${e(t.title)}</h1>
