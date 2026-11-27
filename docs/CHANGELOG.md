@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Filter the category directory by category name, description or parent category. The filter accepts searches without accents and stays in the address.
 - See unread private message counts in navigation and a marker on the mobile menu. The background check runs only in visible tabs outside the mailbox.
 - The post editor detects edits saved after it opened. Load the current published text for comparison while keeping your draft in the editor.
 - Restore unfinished post edits from a browser draft. If the published post has changed, the editor flags the difference and lets you discard the draft to restore the published text.

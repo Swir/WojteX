@@ -179,6 +179,13 @@
 
 .wx-category-section .section-heading { align-items: center; gap: 12px; }
 .wx-category-section h2, .wx-home .discussion-toolbar h2 { font-size: 18px; }
+.wx-directory-search { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px 12px; padding: 16px; margin-bottom: 16px; }
+.wx-directory-search .field { flex: 1 1 13rem; min-width: 0; margin: 0; }
+.wx-directory-search input { min-height: 44px; font-size: 16px; }
+.wx-directory-search input::-webkit-search-cancel-button { display: none; }
+.wx-directory-search #directory-count { flex-basis: 100%; margin: 0; color: var(--muted); font-size: 13px; }
+.wx-directory-clear { min-height: 44px; white-space: normal; }
+.wx-directory-clear[hidden], .wx-directory-results [hidden] { display: none; }
 .wx-directory-link { display: inline-flex; align-items: center; gap: 6px; color: var(--accent); font-weight: 650; }
 .wx-directory-link:hover { text-decoration: underline; }
 .wx-directory-link .icon { inline-size: 15px; block-size: 15px; }

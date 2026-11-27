@@ -271,7 +271,7 @@ async function navigate() {
             if (token !== state.viewToken) return;
         }
         if(['home','latest','category','search','saved','following'].includes(route.name)){await renderFeed(route,token);}
-        else if(route.name==='categories'){renderDirectory();}
+        else if(route.name==='categories'){renderDirectory(route);}
         else if(route.name==='thread'&&route.id){await renderThread(route.id,token);}
         else if(route.name==='rankings'){await renderRankings(token);}
         else if(route.name==='messages'){await renderPrivateMessages(route, token);}
@@ -356,12 +356,70 @@ function feedCategories(route) {
     </section>`;
 }
 
-function renderDirectory() {
+function directorySearchText(value) {
+    return value.toLocaleLowerCase(activeLocale()).normalize('NFD').replace(/\p{M}/gu, '').replaceAll('ł', 'l');
+}
+
+function renderDirectory(route) {
     const categories = state.bootstrap.categories || [];
+    const view = $('#view');
     setHeader(tr('ui.directory.title'), tr('ui.directory.subtitle'));
-    $('#view').innerHTML = categories.length
-        ? `<section aria-labelledby="directory-heading"><div class="section-heading"><h2 id="directory-heading">${e(counted(categories.length, 'categories'))}</h2></div>${categoryCards(categories, categories)}</section>`
-        : `<div class="panel">${empty(tr('ui.nav.no_categories'), tr('ui.directory.empty'), 'layers')}</div>`;
+    if (!categories.length) {
+        view.innerHTML = `<div class="panel">${empty(tr('ui.nav.no_categories'), tr('ui.directory.empty'), 'layers')}</div>`;
+        return;
+    }
+    const term = (route.query.get('q') || '').slice(0, 150);
+    view.innerHTML = `<section aria-label="${tx('ui.directory.title')}">
+        <div class="panel wx-directory-search" role="search" aria-label="${tx('ui.directory.search')}">
+            <label class="field" for="directory-query"><span>${tx('ui.directory.search')}</span><input id="directory-query" type="search" maxlength="150" value="${e(term)}" autocomplete="off" aria-controls="directory-results"></label>
+            <button type="button" class="button button-secondary wx-directory-clear" hidden>${tx('ui.directory.clear_search')}</button>
+            <p id="directory-count" role="status"></p>
+        </div>
+        <div id="directory-results" class="wx-directory-results">
+            ${categoryCards(categories, categories)}
+            <div class="panel wx-directory-no-match" hidden>${empty(tr('ui.directory.no_matches'), tr('ui.feed.search_empty_help'), 'search')}</div>
+        </div>
+    </section>`;
+
+    const input = $('#directory-query', view);
+    const clear = $('.wx-directory-clear', view);
+    const status = $('#directory-count', view);
+    const emptyResults = $('.wx-directory-no-match', view);
+    const names = new Map(categories.map(category => [category.id, category.name]));
+    const entries = $$('.wx-category-card', view).map((card, index) => {
+        const category = categories[index];
+        const metadata = [category.name, category.description, names.get(category.parent_id)].filter(Boolean);
+        return {card, text: directorySearchText(metadata.join(' '))};
+    });
+
+    function applySearch(keepInAddress = true) {
+        const query = input.value.trim();
+        const words = directorySearchText(query).split(/\s+/u).filter(Boolean);
+        let total = 0;
+        for (const {card, text} of entries) {
+            card.hidden = !words.every(word => text.includes(word));
+            if (!card.hidden) total++;
+        }
+        const label = counted(total, 'categories');
+        if (status.textContent !== label) status.textContent = label;
+        emptyResults.hidden = total > 0;
+        clear.hidden = !input.value;
+        if (keepInAddress) {
+            const address = '#/categories' + (query ? '?' + new URLSearchParams({q: query}) : '');
+            if (address !== location.hash) history.replaceState(history.state, '', address);
+        }
+    }
+
+    input.addEventListener('input', event => {
+        if (!event.isComposing) applySearch();
+    });
+    input.addEventListener('compositionend', () => applySearch());
+    clear.addEventListener('click', () => {
+        input.value = '';
+        applySearch();
+        input.focus();
+    });
+    applySearch(false);
 }
 function categoryTag(category){return category?`<a class="tag" href="#/category/${Number(category.id)}" style="--tone:${tone(category.color)}">${e(category.name)}</a>`:'';}
 
