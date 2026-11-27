@@ -296,6 +296,8 @@
   "ui.editor.bold": "Bold",
   "ui.editor.italic": "Italic",
   "ui.editor.link": "Insert link",
+  "ui.editor.shortcut_hint": ":action (Ctrl or ⌘ + :key)",
+  "ui.editor.format_too_long": "This formatting would exceed the post length limit.",
   "ui.editor.code": "Insert code",
   "ui.editor.quote": "Quote",
   "ui.editor.list": "List",

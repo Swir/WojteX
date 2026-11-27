@@ -763,14 +763,18 @@ function quotePost(button, id, fromPointer) {
 let nextEditorId = 0;
 const editorPreviews = new WeakMap();
 
+function editorShortcut(key, label) {
+    return `data-editor-shortcut="${key.toLowerCase()}" aria-keyshortcuts="Control+${key} Meta+${key}" title="${tx('ui.editor.shortcut_hint', {action: tr(label), key})}"`;
+}
+
 function editor(name = 'body', value = '', placeholder = tr('ui.editor.placeholder'), syntax = 'markdown') {
     const previewId = 'editor-preview-' + ++nextEditorId;
     const format = syntax === 'bbcode' ? 'bbcode' : 'markdown';
     return `<div class="editor" data-syntax="${format}">
         <div class="editor-toolbar">
-            <button type="button" data-action="format" data-format="bold" aria-label="${tx('ui.editor.bold')}"><strong>B</strong></button>
-            <button type="button" data-action="format" data-format="italic" aria-label="${tx('ui.editor.italic')}"><em>I</em></button>
-            <button type="button" data-action="format" data-format="link" aria-label="${tx('ui.editor.link')}">${icon('link')}</button>
+            <button type="button" data-action="format" data-format="bold" aria-label="${tx('ui.editor.bold')}" ${editorShortcut('B', 'ui.editor.bold')}><strong>B</strong></button>
+            <button type="button" data-action="format" data-format="italic" aria-label="${tx('ui.editor.italic')}" ${editorShortcut('I', 'ui.editor.italic')}><em>I</em></button>
+            <button type="button" data-action="format" data-format="link" aria-label="${tx('ui.editor.link')}" ${editorShortcut('K', 'ui.editor.link')}>${icon('link')}</button>
             <button type="button" data-action="format" data-format="code" aria-label="${tx('ui.editor.code')}">${icon('code')}</button>
             <button type="button" data-action="format" data-format="quote" aria-label="${tx('ui.editor.quote')}">${icon('quote')}</button>
             <button type="button" data-action="format" data-format="list" aria-label="${tx('ui.editor.list')}">${icon('list')}</button>
@@ -1457,7 +1461,43 @@ function replyMessageModal(button, messageId) {
         </div>
     </form>`, false, 'message');
 }
-function formatEditor(button){const area=$('textarea',button.closest('.editor'));if(!area)return;const {selectionStart:start,selectionEnd:end}=area;const selected=area.value.slice(start,end);let prefix='',suffix='',placeholder=tr('ui.editor.text');switch(button.dataset.format){case'bold':prefix='**';suffix='**';placeholder=tr('ui.editor.bold_text');break;case'italic':prefix='*';suffix='*';placeholder=tr('ui.editor.text');break;case'link':prefix='[';suffix='](https://example.com)';placeholder=tr('ui.editor.link_text');break;case'code':prefix='\n```\n';suffix='\n```\n';placeholder=tr('ui.editor.code_text');break;case'quote':prefix='\n> ';placeholder=tr('ui.editor.quote_text');break;case'list':prefix='\n- ';placeholder=tr('ui.editor.list_text');break;}if(button.closest('.editor').dataset.syntax==='bbcode'){const tags={bold:['[b]','[/b]'],italic:['[i]','[/i]'],link:['[url=https://example.com]','[/url]'],code:['\n[code]\n','\n[/code]\n'],quote:['\n[quote]','[/quote]\n'],list:['\n[list]\n[*]','\n[/list]\n']};[prefix,suffix]=tags[button.dataset.format]||['',''];}const replacement=prefix+(selected||placeholder)+suffix;area.setRangeText(replacement,start,end,'end');area.focus();if(!selected)area.setSelectionRange(start+prefix.length,start+prefix.length+placeholder.length);area.dispatchEvent(new Event('input',{bubbles:true}));}
+const editorExampleUrl = 'https://example.com';
+const editorFormats = {
+    bold: {markdown: ['**', '**'], bbcode: ['[b]', '[/b]'], placeholder: 'ui.editor.bold_text'},
+    italic: {markdown: ['*', '*'], bbcode: ['[i]', '[/i]'], placeholder: 'ui.editor.text'},
+    link: {markdown: ['[', `](${editorExampleUrl})`], bbcode: [`[url=${editorExampleUrl}]`, '[/url]'], placeholder: 'ui.editor.link_text'},
+    code: {markdown: ['\n```\n', '\n```\n'], bbcode: ['\n[code]\n', '\n[/code]\n'], placeholder: 'ui.editor.code_text'},
+    quote: {markdown: ['\n> ', ''], bbcode: ['\n[quote]', '\n[/quote]\n'], placeholder: 'ui.editor.quote_text'},
+    list: {markdown: ['\n- ', ''], bbcode: ['\n[list]\n[*]', '\n[/list]\n'], placeholder: 'ui.editor.list_text'},
+};
+
+function formatEditor(button) {
+    const editor = button.closest('.editor');
+    const area = $('textarea', editor);
+    const format = editorFormats[button.dataset.format];
+    if (!area || !format) return;
+
+    const {selectionStart: start, selectionEnd: end} = area;
+    const selected = area.value.slice(start, end);
+    const placeholder = selected ? '' : tr(format.placeholder);
+    const [prefix, suffix] = editor.dataset.syntax === 'bbcode' ? format.bbcode : format.markdown;
+    const replacement = prefix + (selected || placeholder) + suffix;
+    if (area.value.length + replacement.length - (end - start) > area.maxLength) {
+        toast(tr('ui.editor.format_too_long'), true);
+        return;
+    }
+
+    area.setRangeText(replacement, start, end, 'end');
+    area.focus();
+    if (!selected) area.setSelectionRange(start + prefix.length, start + prefix.length + placeholder.length);
+    else if (button.dataset.format === 'link') {
+        const urlInPrefix = prefix.indexOf(editorExampleUrl);
+        const urlStart = start + (urlInPrefix >= 0 ? urlInPrefix : prefix.length + selected.length + suffix.indexOf(editorExampleUrl));
+        area.setSelectionRange(urlStart, urlStart + editorExampleUrl.length);
+    }
+    area.dispatchEvent(new Event('input', {bubbles: true}));
+}
+
 async function reloadData(){await loadBootstrap();await Promise.allSettled([navigate(),refreshShouts(true),refreshRankings()]);}
 async function refreshGroups(){state.groupData=await request('/api/admin/groups');}
 async function refreshLanguages(){state.languageData=await request('/api/admin/languages');}
@@ -1801,9 +1841,19 @@ document.addEventListener('change', event => {
 dialog.addEventListener('click',event=>{if(event.target===dialog){const r=dialog.getBoundingClientRect();if(event.clientX<r.left||event.clientX>r.right||event.clientY<r.top||event.clientY>r.bottom)closeDialog();}});
 document.addEventListener('keydown', event => {
     if (event.defaultPrevented || event.isComposing) return;
+    const key = event.key.toLowerCase();
+    if (event.ctrlKey !== event.metaKey && !event.altKey && !event.shiftKey && event.target.matches('.editor textarea')) {
+        const control = $$('[data-editor-shortcut]', event.target.closest('.editor'))
+            .find(button => button.dataset.editorShortcut === key && !button.disabled);
+        if (control) {
+            event.preventDefault();
+            if (!event.repeat) formatEditor(control);
+            return;
+        }
+    }
     const typing = event.target.closest('input, textarea, select, [contenteditable]');
     const slash = event.key === '/' && !typing && !event.altKey && !event.ctrlKey && !event.metaKey;
-    const command = event.key.toLowerCase() === 'k' && (event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey;
+    const command = key === 'k' && (event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey;
     if ((command || (slash && !quickSearchDialog.open)) && !dialog.open) {
         event.preventDefault();
         if (quickSearchDialog.open) $('#quick-search-input', quickSearchDialog).focus();

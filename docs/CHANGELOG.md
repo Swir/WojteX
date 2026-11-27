@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Use Ctrl or Command with B, I or K for bold, italic and links in post editors. When linking selected text, type the URL immediately to replace the example address.
 - Quote a selected passage or a full post. Quotes include a link back to the source and are appended to the current reply draft.
 - Search within a discussion across all of its pages. Results show text excerpts and link straight to the matching posts.
 - Jump to the latest post from a discussion or its activity timestamp on topic lists. The view opens on the final page and focuses that post.

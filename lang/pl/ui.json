@@ -296,6 +296,8 @@
   "ui.editor.bold": "Pogrubienie",
   "ui.editor.italic": "Kursywa",
   "ui.editor.link": "Wstaw link",
+  "ui.editor.shortcut_hint": ":action (Ctrl lub ⌘ + :key)",
+  "ui.editor.format_too_long": "To formatowanie przekroczyłoby limit długości wpisu.",
   "ui.editor.code": "Wstaw kod",
   "ui.editor.quote": "Cytat",
   "ui.editor.list": "Lista",
