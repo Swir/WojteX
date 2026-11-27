@@ -16,6 +16,7 @@ use App\Services\ReactionToggleQuery;
 use App\Services\BookmarkToggleQuery;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Database\Query\Expression;
+use Illuminate\Database\Query\JoinClause;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
@@ -56,27 +57,45 @@ class ForumController extends Controller
 
     public function threads(Request $request)
     {
-        $data=$request->validate(['category'=>'nullable|integer|min:1','q'=>'nullable|string|max:150','sort'=>'nullable|in:latest,popular,unanswered','page'=>'nullable|integer|min:1|max:100000','bookmarked'=>'nullable|boolean','following'=>'nullable|boolean','unread'=>'nullable|boolean']);
-        $query=Forum::threadQuery($request->user());
-        if (!empty($data['category'])) $query->where('t.category_id',$data['category']);
+        $data = $request->validate([
+            'category' => 'nullable|integer|min:1',
+            'q' => 'nullable|string|max:150',
+            'sort' => 'nullable|in:latest,popular,unanswered,recently_saved',
+            'page' => 'nullable|integer|min:1|max:100000',
+            'bookmarked' => 'nullable|boolean',
+            'following' => 'nullable|boolean',
+            'unread' => 'nullable|boolean',
+        ]);
+        $sort = $data['sort'] ?? 'latest';
+        $bookmarked = $request->boolean('bookmarked');
+        $user = $request->user();
+        $query = Forum::threadQuery($user);
+        if (!empty($data['category'])) $query->where('t.category_id', $data['category']);
         if (ThreadSearchQuery::shouldSearch($data['q'] ?? null)) {
             // Search literal text within visible threads; SQL wildcard characters
             // supplied by visitors must not expand into accidental full scans.
             $query = ThreadSearchQuery::apply($query, $data['q']);
         }
-        if ($request->boolean('bookmarked')) {
-            abort_unless($request->user(),401,__('server.bookmarks_login'));
-            $query->whereExists(fn($q)=>$q->selectRaw('1')->from('bookmarks')->whereColumn('thread_id','t.id')->where('user_id',$request->user()->id));
+        if ($bookmarked) {
+            abort_unless($user, 401, __('server.bookmarks_login'));
+            $query->join('bookmarks as saved_bookmark', static function (JoinClause $join) use ($user): void {
+                $join->on('saved_bookmark.thread_id', '=', 't.id')->where('saved_bookmark.user_id', $user->id);
+            });
         }
         $unread = $request->boolean('unread');
         if ($request->boolean('following') || $unread) {
-            abort_unless($request->user(), 401, __('server.following_login'));
-            ThreadFollows::filter($query, (int) $request->user()->id, $unread);
+            abort_unless($user, 401, __('server.following_login'));
+            ThreadFollows::filter($query, (int) $user->id, $unread);
         }
-        if (($data['sort']??'latest')==='unanswered') $query->whereRaw('(SELECT COUNT(*) FROM posts WHERE posts.thread_id=t.id) = 1');
-        $query->orderByDesc('t.is_pinned');
-        if (($data['sort']??'latest')==='popular') $query->orderByDesc('reactions_count')->orderByDesc('posts_count');
-        $page=$query->orderByDesc('t.updated_at')->orderByDesc('t.id')->paginate(15);
+        if ($sort === 'unanswered') $query->whereRaw('(SELECT COUNT(*) FROM posts WHERE posts.thread_id=t.id) = 1');
+        if ($bookmarked && $sort === 'recently_saved') {
+            $query->orderByDesc('saved_bookmark.created_at')->orderByDesc('saved_bookmark.id');
+        } else {
+            $query->orderByDesc('t.is_pinned');
+            if ($sort === 'popular') $query->orderByDesc('reactions_count')->orderByDesc('posts_count');
+            $query->orderByDesc('t.updated_at')->orderByDesc('t.id');
+        }
+        $page = $query->paginate(15);
         return response()->json(['data'=>Forum::threadsData($page->getCollection()),'current_page'=>$page->currentPage(),'last_page'=>$page->lastPage(),'total'=>$page->total()]);
     }
 

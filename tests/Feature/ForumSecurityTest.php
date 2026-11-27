@@ -686,9 +686,36 @@ class ForumSecurityTest extends TestCase
 
         $results = $this->getJson($search)->assertOk()->assertJsonPath('total', 2);
         $this->assertEqualsCanonicalizing([$titleMatch, $replyMatch], array_column($results->json('data'), 'id'));
+        $results = $this->getJson($search.'&sort=recently_saved')->assertOk()->assertJsonPath('total', 2);
+        $this->assertSame([$replyMatch, $titleMatch], array_column($results->json('data'), 'id'));
 
         DB::table('categories')->where('id', $category)->update(['is_private' => true]);
         $this->getJson($search)->assertOk()->assertJsonPath('total', 0)->assertJsonCount(0, 'data');
+        $this->getJson($search.'&sort=recently_saved')->assertOk()->assertJsonPath('total', 0)->assertJsonCount(0, 'data');
+    }
+
+    public function test_saved_topics_can_be_sorted_by_bookmark_date_with_stable_ties(): void
+    {
+        $author = $this->user();
+        $reader = $this->user();
+        $category = $this->category();
+        [$older] = $this->thread($author, $category, 'Older bookmark');
+        [$newer] = $this->thread($author, $category, 'Newer bookmark');
+        [$sameSecond] = $this->thread($author, $category, 'Bookmark from the same second');
+        [$undated] = $this->thread($author, $category, 'Undated bookmark');
+        DB::table('threads')->where('id', $older)->update(['is_pinned' => true]);
+        DB::table('bookmarks')->insert([
+            ['user_id' => $reader->id, 'thread_id' => $newer, 'created_at' => '2026-10-20 12:00:00'],
+            ['user_id' => $reader->id, 'thread_id' => $sameSecond, 'created_at' => '2026-10-20 12:00:00'],
+            ['user_id' => $reader->id, 'thread_id' => $older, 'created_at' => '2026-10-19 12:00:00'],
+            ['user_id' => $reader->id, 'thread_id' => $undated, 'created_at' => null],
+        ]);
+
+        $saved = '/api/threads?bookmarked=1';
+        $this->getJson($saved.'&sort=recently_saved')->assertUnauthorized();
+        $this->actingAs($reader)->getJson($saved)->assertOk()->assertJsonPath('data.0.id', $older);
+        $results = $this->getJson($saved.'&sort=recently_saved')->assertOk()->assertJsonPath('total', 4);
+        $this->assertSame([$sameSecond, $newer, $older, $undated], array_column($results->json('data'), 'id'));
     }
 
     public function test_saving_and_removing_the_same_bookmark_multiple_times_is_idempotent(): void

@@ -242,6 +242,8 @@
   "ui.feed.private_notice": "Ten dział jest prywatny. Dostęp mają administratorzy i moderatorzy.",
   "ui.feed.search_results": "Wyniki wyszukiwania",
   "ui.feed.saved_discussions": "Zapisane dyskusje",
+  "ui.feed.recently_saved": "Ostatnio zapisane",
+  "ui.feed.saved_latest_activity": "Ostatnia aktywność",
   "ui.feed.saved_search": "Szukaj w zapisanych",
   "ui.feed.saved_filter_apply": "Filtruj",
   "ui.feed.saved_filter_clear": "Wyczyść filtry",

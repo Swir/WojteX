@@ -242,6 +242,8 @@
   "ui.feed.private_notice": "This category is private. Only administrators and moderators have access.",
   "ui.feed.search_results": "Search results",
   "ui.feed.saved_discussions": "Saved discussions",
+  "ui.feed.recently_saved": "Recently saved",
+  "ui.feed.saved_latest_activity": "Latest activity",
   "ui.feed.saved_search": "Search saved topics",
   "ui.feed.saved_filter_apply": "Filter",
   "ui.feed.saved_filter_clear": "Clear filters",

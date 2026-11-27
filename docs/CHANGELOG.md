@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Sort saved topics by when you bookmarked them. Search and category filters still work with this order.
 - Search titles and posts in followed topics. Search works with the category and new replies filters, and stays in the address when you switch tabs or pages.
 - Drag a file into the attachment picker when creating a topic or adding an attachment to a post. The file is checked before you send it.
 - Open attached PNG, JPEG, GIF and WebP images in a preview. Images load only when requested, and the original download remains available.
