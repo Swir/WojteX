@@ -30,6 +30,19 @@ assert.notEqual(firstTab.keyFor({...account, created_at: '2026-11-25 12:00:00'})
 assert.notEqual(firstTab.keyFor(account, 1), firstTab.keyFor(account, 2));
 assert.notEqual(firstTab.keyFor(account, 1), key);
 
+const editKey = firstTab.keyFor(account, 1, 'edit');
+assert.notEqual(editKey, firstTab.keyFor(account, 1));
+assert.notEqual(editKey, firstTab.keyFor(account, 2, 'edit'));
+assert.notEqual(editKey, firstTab.keyFor({...account, id: 5}, 1, 'edit'));
+assert.equal(firstTab.keyFor(account, null, 'edit'), null);
+assert.notEqual(firstTab.revisionFor('abc'), firstTab.revisionFor('abd'));
+const editDraft = {body: '', baseline: firstTab.revisionFor('Published text')};
+const editSave = firstTab.write(editKey, editDraft, null);
+assert.equal(editSave.status, 'saved');
+assert.equal(secondTab.read(editKey).draft.body, '');
+assert.equal(secondTab.read(editKey).draft.baseline, secondTab.revisionFor('Published text'));
+assert.equal(firstTab.read(key).draft, null);
+
 const original = {title: 'A draft about the forum', body: 'Some Markdown **text**.', categoryId: 2};
 const originalSave = firstTab.write(key, original, null);
 assert.equal(originalSave.status, 'saved');
@@ -55,4 +68,4 @@ const withoutStorage = browser({getItem() { throw new Error('Access denied'); }}
 assert.equal(withoutStorage.read(key).draft, null);
 assert.equal(withoutStorage.write(key, original, null).status, 'unavailable');
 
-console.log('PASS: draft restoration, account and reply isolation, cross-tab conflict, conditional removal, explicit overwrite, malformed data and unavailable storage');
+console.log('PASS: draft restoration, account, reply and edit isolation, edit revisions, cross-tab conflict, conditional removal, explicit overwrite, malformed data and unavailable storage');

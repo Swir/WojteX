@@ -286,6 +286,8 @@
   "ui.drafts.overwrite": "Save this version",
   "ui.drafts.discard": "Discard draft",
   "ui.drafts.discard_confirm": "Discard the draft and clear the editor?",
+  "ui.drafts.edit_discard_confirm": "Discard the draft and restore the published post?",
+  "ui.drafts.edit_changed": "The published post changed after this draft was saved. Review your changes before saving.",
   "ui.drafts.discarded": "Draft discarded.",
   "ui.drafts.file_help": "Choose the file again when you reopen the draft.",
   "ui.drafts.choose_category": "Choose a category",

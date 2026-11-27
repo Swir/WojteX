@@ -1012,6 +1012,10 @@ function draftControls() {
 
 function draftSnapshot(form) {
     const {body, title, category_id: category} = form.elements;
+    const entry = draftForms.get(form);
+    if (entry?.published !== undefined) {
+        return body.value === entry.published ? null : {body: body.value, baseline: entry.baseline};
+    }
     if (!body.value.trim() && !title?.value.trim()) return null;
     return title ? {body: body.value, title: title.value, categoryId: category.value ? Number(category.value) : null} : {body: body.value};
 }
@@ -1022,13 +1026,16 @@ function showDraftStatus(form, status) {
     if (hasText && form.elements.category_id?.value === '' && ['saved', 'restored'].includes(status)) {
         status = 'category';
     }
+    const entry = draftForms.get(form);
+    if (hasText && entry?.revision !== entry?.baseline && ['saved', 'restored'].includes(status)) status = 'changed';
     const message = {
         saved: tr('ui.drafts.saved'),
         restored: tr('ui.drafts.restored'),
         unavailable: tr('ui.drafts.unavailable'),
         conflict: tr('ui.drafts.conflict'),
         discarded: tr('ui.drafts.discarded'),
-        category: tr('ui.drafts.category_unavailable')
+        category: tr('ui.drafts.category_unavailable'),
+        changed: tr('ui.drafts.edit_changed'),
     }[status] || '';
     bar.hidden = !message && !hasText;
     const label = $('[data-draft-status]', bar);
@@ -1037,12 +1044,25 @@ function showDraftStatus(form, status) {
     $('[data-action="overwrite-draft"]', bar).hidden = status !== 'conflict' || !hasText;
 }
 
-function bindDraft(form, threadId = null) {
-    const key = window.WojtexDrafts?.keyFor(state.user, threadId);
+function bindDraft(form, targetId = null) {
+    const editing = form.dataset.form === 'edit-post';
+    const key = window.WojtexDrafts?.keyFor(state.user, targetId, editing ? 'edit' : 'reply');
     if (!key) return;
     const {raw, draft} = WojtexDrafts.read(key);
-    draftForms.set(form, {key, raw, timer: null});
+    const entry = {key, raw, timer: null};
+    if (editing) {
+        entry.published = form.elements.body.value;
+        entry.revision = WojtexDrafts.revisionFor(entry.published);
+        entry.baseline = draft?.baseline ?? entry.revision;
+    }
+    draftForms.set(form, entry);
     if (!draft) return;
+    if (editing && draft.body === entry.published) {
+        const result = WojtexDrafts.write(key, null, raw);
+        if (result.status === 'saved') entry.raw = result.raw;
+        entry.baseline = entry.revision;
+        return;
+    }
 
     form.elements.body.value = draft.body;
     if (form.elements.title) {
@@ -1067,7 +1087,10 @@ function saveDraft(form, overwrite = false) {
     pendingDraftForms.delete(form);
     const snapshot = draftSnapshot(form);
     const result = WojtexDrafts.write(entry.key, snapshot, entry.raw, overwrite);
-    if (result.status === 'saved') entry.raw = result.raw;
+    if (result.status === 'saved') {
+        entry.raw = result.raw;
+        if (!snapshot) entry.baseline = entry.revision;
+    }
     showDraftStatus(form, result.status === 'saved' && !snapshot ? '' : result.status);
 }
 
@@ -1087,7 +1110,9 @@ function flushDrafts() {
 
 function discardDraft(form) {
     const entry = draftForms.get(form);
-    if (!entry || !window.confirm(tr('ui.drafts.discard_confirm'))) return;
+    if (!entry) return;
+    const confirmation = entry.published === undefined ? tr('ui.drafts.discard_confirm') : tr('ui.drafts.edit_discard_confirm');
+    if (!window.confirm(confirmation)) return;
     clearTimeout(entry.timer);
     pendingDraftForms.delete(form);
     const result = WojtexDrafts.write(entry.key, null, entry.raw);
@@ -1097,7 +1122,8 @@ function discardDraft(form) {
     }
     entry.raw = null;
     setEditorPreview(form.elements.body.closest('.editor'), false);
-    form.elements.body.value = '';
+    form.elements.body.value = entry.published ?? '';
+    entry.baseline = entry.revision;
     if (form.elements.title) form.elements.title.value = '';
     if (form.elements.attachment) clearPostAttachment(form.elements.attachment);
     showDraftStatus(form, 'discarded');
@@ -1398,7 +1424,20 @@ function clearPostAttachment(input) {
     updatePostAttachment(input);
 }
 function newTopicModal(){if(!ensureAuth())return;const categories=(state.bootstrap.categories||[]).filter(c=>c.can_create!==false);if(!categories.length){toast(tr('ui.compose.no_category'),true);return;}const selected=state.route?.name==='category'?state.route.id:state.thread?.thread?.category_id;modal(tr('ui.topic.new'),tr('ui.compose.subtitle'),`<form data-form="new-topic"><div class="form-error" role="alert"></div><label class="field"><span>${tx('ui.compose.topic_title')}</span><input name="title" placeholder="${tx('ui.compose.topic_placeholder')}" required minlength="5" maxlength="180"></label><label class="field"><span>${tx('ui.compose.space')}</span><select name="category_id" required>${categories.map(c=>`<option value="${Number(c.id)}" ${selected===c.id?'selected':''}>${e(c.name)}${e(c.is_private?tr('ui.common.private_suffix'):'')}</option>`).join('')}</select></label><div class="field"><span>${tx('ui.compose.message')}</span>${editor('body','',tr('ui.compose.body_placeholder'))}</div>${draftControls()}<p class="composer-note">${tx('ui.post.markdown_help')}</p><details class="composer-attachment"><summary>${icon('paperclip')}${tx('ui.post.attachment')} · ${tx('ui.common.optional')}</summary>${postAttachmentPicker('attachment')}</details><div class="form-footer"><button type="button" class="button button-ghost" data-action="close-dialog">${tx('ui.common.cancel')}</button><button type="submit" class="button button-primary">${tx('ui.compose.publish')}${icon('arrow-right')}</button></div></form>`,true);bindDraft($('[data-form="new-topic"]',dialog));}
-function editPostModal(id){const p=state.thread?.posts?.find(p=>p.id===id);if(!p)return;modal(tr('ui.compose.edit_title'),tr('ui.compose.edit_subtitle'),`<form data-form="edit-post" data-id="${id}"><div class="form-error" role="alert"></div>${editor('body',p.body,tr('ui.compose.edit_placeholder'),p.body_format||'markdown')}<div class="form-footer"><button class="button button-ghost" type="button" data-action="close-dialog">${tx('ui.common.cancel')}</button><button class="button button-primary" type="submit">${tx('ui.common.save_changes')}</button></div></form>`,true);}
+function editPostModal(id) {
+    const post = state.thread?.posts?.find(item => item.id === id);
+    if (!post) return;
+    modal(tr('ui.compose.edit_title'), tr('ui.compose.edit_subtitle'), `<form data-form="edit-post" data-id="${id}" data-thread="${Number(state.thread.thread.id)}">
+        <div class="form-error" role="alert"></div>
+        ${editor('body', post.body, tr('ui.compose.edit_placeholder'), post.body_format || 'markdown')}
+        ${draftControls()}
+        <div class="form-footer">
+            <button class="button button-ghost" type="button" data-action="close-dialog">${tx('ui.common.close')}</button>
+            <button class="button button-primary" type="submit">${tx('ui.common.save_changes')}</button>
+        </div>
+    </form>`, true);
+    bindDraft($('[data-form="edit-post"]', dialog), id);
+}
 function attachmentModal(id){modal(tr('ui.attachment.title'),tr('ui.attachment.subtitle'),`<form data-form="attachment" data-id="${id}"><div class="form-error" role="alert"></div>${postAttachmentPicker('file', true)}<div class="form-footer"><button type="submit" class="button button-primary">${icon('upload')}${tx('ui.common.upload_file')}</button></div></form>`,false,'paperclip');}
 function categoryModal(id=null){const c=(state.admin?.categories||state.bootstrap.categories||[]).find(c=>c.id===id)||{name:'',description:'',color:'violet',icon:'code',is_private:false,parent_id:null};const optionIcons={code:tr('ui.category.icon_code'),game:tr('ui.category.icon_games'),star:tr('ui.category.icon_ideas'),rocket:tr('ui.category.icon_projects'),chat:tr('ui.category.icon_chat'),folder:tr('ui.category.icon_folder'),shield:tr('ui.category.icon_admin'),book:tr('ui.category.icon_guides'),help:tr('ui.category.icon_help'),terminal:tr('ui.category.icon_terminal')};modal(id?tr('ui.category.edit_title'):tr('ui.category.new_title'),tr('ui.category.subtitle'),`<form data-form="category" ${id?`data-id="${id}"`:''}><div class="form-error" role="alert"></div><label class="field"><span>${tx('ui.category.name')}</span><input name="name" required minlength="2" maxlength="120" value="${e(c.name)}"></label><label class="field"><span>${tx('ui.category.description')}</span><textarea name="description" maxlength="500">${e(c.description)}</textarea></label><div class="form-row"><label class="field"><span>${tx('ui.category.color')}</span><select name="color">${['violet','cyan','blue','green','amber','rose'].map(k=>`<option value="${k}" ${c.color===k?'selected':''}>${e(({violet:tr('ui.category.violet'),cyan:tr('ui.category.cyan'),blue:tr('ui.category.blue'),green:tr('ui.category.green'),amber:tr('ui.category.amber'),rose:tr('ui.category.rose'),slate:tr('ui.category.slate')})[k])}</option>`).join('')}</select></label><label class="field"><span>${tx('ui.category.icon')}</span><select name="icon">${Object.entries(optionIcons).map(([k,v])=>`<option value="${k}" ${c.icon===k?'selected':''}>${e(v)}</option>`).join('')}</select></label></div><label class="checkbox-field"><input name="is_private" type="checkbox" ${c.is_private?'checked':''}><span>${tx('ui.category.private')}</span></label><div class="form-footer"><button class="button button-primary" type="submit">${icon('check')}${e(id?tr('ui.common.save_changes'):tr('ui.category.create'))}</button></div></form>`,false,'layers');}
 function confirmModal(title,text,buttonLabel,callback,danger=true){state.confirmAction=callback;modal(title,text,`<form data-form="confirm"><div class="form-error" role="alert"></div><div class="form-footer"><button type="button" class="button button-ghost" data-action="close-dialog">${tx('ui.common.cancel')}</button><button type="submit" class="button ${danger?'button-danger':'button-primary'}">${e(buttonLabel)}</button></div></form>`,false,danger?'alert':'info');}
@@ -1723,7 +1762,18 @@ case 'reply': {
     await updateStats();
     await refreshRankings();
 } break;
-case 'edit-post':await request(`/api/posts/${Number(form.dataset.id)}`,{method:'PATCH',body:{body:values.body}});closeDialog();await navigate();toast(tr('ui.post.saved'));break;
+case 'edit-post': {
+    const thread = Number(form.dataset.thread);
+    const submitted = draftSnapshot(form);
+    saveDraft(form);
+    await request(`/api/posts/${Number(form.dataset.id)}`, {method: 'PATCH', body: {body: values.body}});
+    clearPublishedDraft(form, submitted);
+    if (form.isConnected && dialog.open) closeDialog();
+    const route = routeInfo();
+    if (route.name === 'thread' && route.id === thread) await navigate();
+    toast(tr('ui.post.saved'));
+    break;
+}
 case 'attachment':{const fd=new FormData();fd.append('file',$('input[name=file]',form).files[0]);await request(`/api/posts/${Number(form.dataset.id)}/attachments`,{method:'POST',body:fd});closeDialog();await navigate();toast(tr('ui.attachment.added'));}break;
 case 'profile':await request('/api/profile',{method:'PATCH',body:{name:values.name,bio:values.bio,allow_private_messages:!!$('input[name=allow_private_messages]',form)?.checked}});await loadBootstrap();renderProfile();toast(tr('ui.profile.saved'));break;
 case 'settings':{values.registration_open=!!$('input[name=registration_open]',form).checked;await request('/api/admin/settings',{method:'PATCH',body:values});await loadBootstrap();await refreshAdmin();toast(tr('ui.admin.settings_saved'));}break;

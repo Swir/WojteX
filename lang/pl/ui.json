@@ -286,6 +286,8 @@
   "ui.drafts.overwrite": "Zapisz tę wersję",
   "ui.drafts.discard": "Usuń szkic",
   "ui.drafts.discard_confirm": "Usunąć szkic i wyczyścić edytor?",
+  "ui.drafts.edit_discard_confirm": "Usunąć szkic i przywrócić opublikowany wpis?",
+  "ui.drafts.edit_changed": "Opublikowany wpis zmienił się od zapisania szkicu. Sprawdź zmiany przed zapisem.",
   "ui.drafts.discarded": "Szkic został usunięty.",
   "ui.drafts.file_help": "Po ponownym otwarciu szkicu wybierz plik jeszcze raz.",
   "ui.drafts.choose_category": "Wybierz dział",
