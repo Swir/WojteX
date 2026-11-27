@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Copy code directly from posts and the editor preview. If clipboard access is unavailable, the code is selected for manual copying.
 - The mobile menu has a close button, keeps keyboard focus inside while open, and restores focus when dismissed.
 - Enter a page number to jump directly to it in long discussions and topic lists.
 - Category and discussion pages show the path through parent categories, with links back to each level and the category directory.
