@@ -263,34 +263,19 @@
 .wx-unread-link { min-height: 30px; padding-inline: 8px; }
 .wx-mark-thread-read { min-height: 36px; margin-top: 4px; padding: 4px 0; }
 .wx-mark-thread-read:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.wx-follow-category { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 8px 20px 0; }
-.wx-follow-category label { color: var(--muted); font-size: 13px; }
-.wx-follow-category select {
-    flex: 1 1 180px;
-    min-width: 0;
-    max-width: 320px;
-    min-height: 44px;
-    padding: 8px 10px;
-    border: 1px solid var(--line-strong);
-    border-radius: 9px;
-    background: var(--input);
-    color: var(--text);
-    font-size: 16px;
-}
-.wx-follow-category select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.wx-saved-filters {
+.wx-feed-filters {
     display: flex;
     flex-wrap: wrap;
     align-items: flex-end;
     gap: 10px 12px;
     padding: 8px 20px 4px;
 }
-.wx-saved-filters .field { flex: 1 1 11rem; min-width: 0; margin: 0; }
-.wx-saved-filters .field > span { color: var(--muted); font-size: 13px; }
-.wx-saved-filters input, .wx-saved-filters select { min-height: 44px; font-size: 16px; }
-.wx-saved-filter-actions { display: flex; flex-wrap: wrap; gap: 8px; }
-.wx-saved-filter-actions .button { min-height: 44px; }
-.wx-saved-filters :is(input, select, button):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.wx-feed-filters .field { flex: 1 1 11rem; min-width: 0; margin: 0; }
+.wx-feed-filters .field > span { color: var(--muted); font-size: 13px; }
+.wx-feed-filters input, .wx-feed-filters select { min-height: 44px; font-size: 16px; }
+.wx-feed-filter-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.wx-feed-filter-actions .button { min-height: 44px; }
+.wx-feed-filters :is(input, select, button):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .wx-mailbox-nav { flex-wrap: wrap; gap: 0 16px; margin: 0 0 10px; padding: 0 3px; overflow: visible; }
 .wx-mailbox-nav .topic-tab { min-height: 44px; font-size: 13px; }
 .wx-mailbox-nav .topic-tab:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
@@ -394,10 +379,9 @@
     .wx-thread-page .post-card:focus { scroll-margin-top: 132px; }
     .wx-unread-link { min-height: 40px; }
     .wx-mark-thread-read { min-height: 44px; }
-    .wx-follow-category { padding-inline: 15px; }
-    .wx-saved-filters { padding-inline: 15px; }
-    .wx-saved-filters .field { flex-basis: 9rem; }
-    .wx-saved-filter-actions { flex-basis: 100%; }
+    .wx-feed-filters { padding-inline: 15px; }
+    .wx-feed-filters .field { flex-basis: 9rem; }
+    .wx-feed-filter-actions { flex-basis: 100%; }
     .wx-message-actions .button { min-height: 44px; }
     .sidebar:not(.open) { visibility: hidden; }
     .wx-welcome { border-radius: 16px; }

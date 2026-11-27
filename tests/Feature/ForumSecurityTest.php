@@ -841,9 +841,15 @@ class ForumSecurityTest extends TestCase
             ->assertJsonPath('total', 1)->assertJsonPath('data.0.id', $second);
         $this->getJson('/api/threads?following=1&unread=1&category='.$secondCategory)->assertOk()
             ->assertJsonPath('total', 0)->assertJsonCount(0, 'data');
+        $this->getJson('/api/threads?following=1&unread=1&category='.$firstCategory.'&q=New%20reply')->assertOk()
+            ->assertJsonPath('total', 1)->assertJsonPath('data.0.id', $first);
+        $this->getJson('/api/threads?following=1&category='.$secondCategory.'&q=Second%20followed')->assertOk()
+            ->assertJsonPath('total', 1)->assertJsonPath('data.0.id', $second);
+        $this->getJson('/api/threads?following=1&unread=1&category='.$secondCategory.'&q=Second%20followed')->assertOk()
+            ->assertJsonPath('total', 0)->assertJsonCount(0, 'data');
 
         DB::table('categories')->where('id', $firstCategory)->update(['is_private' => true]);
-        $this->getJson('/api/threads?following=1&unread=1&category='.$firstCategory)->assertOk()
+        $this->getJson('/api/threads?following=1&unread=1&category='.$firstCategory.'&q=New%20reply')->assertOk()
             ->assertJsonPath('total', 0)->assertJsonCount(0, 'data');
     }
 

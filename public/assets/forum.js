@@ -246,9 +246,9 @@ async function navigate() {
     const route = routeInfo();
     const focused = document.activeElement;
     const followingFocus = route.name === 'following' && focused?.closest('.wx-follow-filters')
-        ? (focused.id === 'following-category' ? '#following-category' : '.wx-follow-filters nav [aria-current="page"]')
+        ? (focused.id ? '#' + focused.id : '.wx-follow-filters nav [aria-current="page"]')
         : null;
-    const savedFocus = route.name === 'saved' && focused?.id && focused.closest('.wx-saved-filters')
+    const savedFocus = route.name === 'saved' && focused?.id && focused.closest('.wx-feed-filters')
         ? '#' + focused.id : null;
     const mailboxNav = route.name === 'messages' ? focused?.closest('.wx-mailbox-nav, .private-message-pager') : null;
     state.route = route;
@@ -524,18 +524,16 @@ function feedCategoryOptions(categories, categoryId) {
         }).join('')}`;
 }
 
-function followingFilters(categories, categoryId, unread) {
+function followingFilters(categories, categoryId, unread, term) {
     const url = (onlyUnread) => {
         const params = new URLSearchParams();
         if (categoryId) params.set('category', String(categoryId));
+        if (term) params.set('q', term);
         if (onlyUnread) params.set('unread', '1');
         return '#/following' + (params.size ? '?' + params : '');
     };
     return `<div class="wx-follow-filters">
-        ${categories.length || categoryId ? `<div class="wx-follow-category">
-            <label for="following-category">${tx('ui.topic.category')}</label>
-            <select id="following-category">${feedCategoryOptions(categories, categoryId)}</select>
-        </div>` : ''}
+        ${feedFilters('following', categories, categoryId, term)}
         <nav class="topic-tabs" aria-label="${tx('ui.follow.filter')}">
             <a href="${e(url(false))}" class="topic-tab${unread ? '' : ' active'}"${unread ? '' : ' aria-current="page"'}>${icon('bell')}${tx('ui.follow.all')}</a>
             <a href="${e(url(true))}" class="topic-tab${unread ? ' active' : ''}"${unread ? ' aria-current="page"' : ''}>${icon('spark')}${tx('ui.follow.unread')}</a>
@@ -543,19 +541,20 @@ function followingFilters(categories, categoryId, unread) {
     </div>`;
 }
 
-function savedFilters(categories, categoryId, term) {
-    return `<form class="wx-saved-filters" data-form="saved-filters" role="search" aria-label="${tx('ui.feed.saved_search')}">
-        <label class="field" for="saved-query">
-            <span>${tx('ui.feed.saved_search')}</span>
-            <input id="saved-query" name="q" type="search" value="${e(term)}" maxlength="150" autocomplete="off">
+function feedFilters(collection, categories, categoryId, term) {
+    const searchLabel = tx(collection === 'following' ? 'ui.follow.search' : 'ui.feed.saved_search');
+    return `<form class="wx-feed-filters" data-form="${collection}-filters" role="search" aria-label="${searchLabel}">
+        <label class="field" for="${collection}-query">
+            <span>${searchLabel}</span>
+            <input id="${collection}-query" name="q" type="search" value="${e(term)}" maxlength="150" autocomplete="off">
         </label>
-        ${categories.length || categoryId ? `<label class="field" for="saved-category">
+        ${categories.length || categoryId ? `<label class="field" for="${collection}-category">
             <span>${tx('ui.topic.category')}</span>
-            <select id="saved-category" name="category">${feedCategoryOptions(categories, categoryId)}</select>
+            <select id="${collection}-category" name="category">${feedCategoryOptions(categories, categoryId)}</select>
         </label>` : ''}
-        <div class="wx-saved-filter-actions">
-            <button type="submit" id="saved-filter-submit" class="button button-secondary">${icon('search')}${tx('ui.feed.saved_filter_apply')}</button>
-            ${term || categoryId ? `<button type="button" id="saved-filter-clear" class="button button-ghost" data-action="clear-saved-filters">${tx('ui.feed.saved_filter_clear')}</button>` : ''}
+        <div class="wx-feed-filter-actions">
+            <button type="submit" id="${collection}-filter-submit" class="button button-secondary">${icon('search')}${tx('ui.feed.saved_filter_apply')}</button>
+            ${term || categoryId ? `<button type="button" id="${collection}-filter-clear" class="button button-ghost" data-action="clear-${collection}-filters">${tx('ui.feed.saved_filter_clear')}</button>` : ''}
         </div>
     </form>`;
 }
@@ -567,7 +566,7 @@ async function renderFeed(route, token) {
     const term = route.query.get('q') || '';
     const following = route.name === 'following';
     const saved = route.name === 'saved';
-    const savedTerm = saved ? Array.from(term.trim()).slice(0, 150).join('') : '';
+    const filterTerm = saved || following ? Array.from(term.trim()).slice(0, 150).join('') : '';
     const unread = following && route.query.get('unread') === '1';
     const categoryParam = Number(route.query.get('category'));
     const filterCategory = (following || saved) && Number.isSafeInteger(categoryParam) && categoryParam > 0 ? categoryParam : null;
@@ -591,7 +590,7 @@ async function renderFeed(route, token) {
 
     const query = new URLSearchParams({sort: state.sort, page: String(state.page)});
     if (route.name === 'category') query.set('category', String(route.id));
-    if (route.name === 'search' || savedTerm) query.set('q', saved ? savedTerm : term);
+    if (route.name === 'search' || filterTerm) query.set('q', route.name === 'search' ? term : filterTerm);
     if (saved) query.set('bookmarked', '1');
     if (following) query.set('following', '1');
     if (filterCategory) query.set('category', String(filterCategory));
@@ -611,10 +610,10 @@ async function renderFeed(route, token) {
     };
     const noResults = {
         search: [tr('ui.feed.search_empty'), tr('ui.feed.search_empty_help'), 'search', `<button class="button button-secondary" data-action="quick-search">${tx('ui.quick_search.open')}</button>`],
-        saved: savedTerm || filterCategory
+        saved: filterTerm || filterCategory
             ? [tr('ui.feed.saved_filter_empty'), tr('ui.feed.saved_filter_empty_help'), 'search']
             : [tr('ui.feed.collection_empty'), tr('ui.feed.collection_empty_help'), 'bookmark'],
-        following: filterCategory ? [
+        following: filterTerm ? [tr('ui.follow.search_empty'), tr('ui.follow.search_empty_help'), 'search'] : filterCategory ? [
             unread ? tr('ui.follow.caught_up') : tr('ui.follow.category_empty'),
             unread ? tr('ui.follow.category_caught_up') : tr('ui.follow.category_empty_help'),
             unread ? 'check-circle' : 'bell',
@@ -629,7 +628,7 @@ async function renderFeed(route, token) {
         ['unanswered', 'message', tx('ui.feed.unanswered')]
     ];
     const controls = following
-        ? followingFilters(categories, filterCategory, unread)
+        ? followingFilters(categories, filterCategory, unread, filterTerm)
         : `<div class="topic-tabs" role="group" aria-label="${tx('ui.feed.sort_label')}">
             ${sorting.map(([value, symbol, label]) => `<button type="button" class="topic-tab ${state.sort === value ? 'active' : ''}" aria-pressed="${state.sort === value}" data-action="sort" data-sort="${value}">${icon(symbol)}${label}</button>`).join('')}
         </div>`;
@@ -640,7 +639,7 @@ async function renderFeed(route, token) {
         ${['home', 'category'].includes(route.name) ? feedCategories(route) : ''}
         <section class="panel threads-panel" id="forum-list" aria-labelledby="discussion-heading">
             <div class="discussion-toolbar"><h2 id="discussion-heading">${e(headingsByFeed[route.name] || tr('ui.feed.discussions_title'))}</h2><small>${e(counted(results.total, 'topics'))}</small></div>
-            ${saved ? savedFilters(categories, filterCategory, savedTerm) : ''}
+            ${saved ? feedFilters('saved', categories, filterCategory, filterTerm) : ''}
             ${controls}
             <div>${results.data?.length ? results.data.map(topicRow).join('') : empty(...(noResults[route.name] || firstTopic))}</div>
             ${pagination(results.current_page || 1, results.last_page || 1, results.total || 0)}
@@ -1856,7 +1855,11 @@ case 'thread-post-search-result': {
     break;
 }
 case 'sort':updateRouteQuery({sort:button.dataset.sort,page:null});break;
-case 'clear-saved-filters':$('#saved-query')?.focus({preventScroll:true});updateRouteQuery({q:null,category:null,page:null});break;
+case 'clear-following-filters':
+case 'clear-saved-filters':
+    button.form.elements.q.focus({preventScroll: true});
+    updateRouteQuery({q: null, category: null, page: null});
+    break;
 case 'page':goToPage(button.dataset.page);break;
 case 'message-find':{
     const form=button.closest('[data-form="private-message"]');
@@ -2004,6 +2007,7 @@ case 'thread-post-search':
     if (Array.from(values.q.trim()).length < 2) throw new Error(tr('ui.thread_search.minimum'));
     await loadThreadPostSearch(form, values.q.trim());
     break;
+case 'following-filters':
 case 'saved-filters':
     updateRouteQuery({q:values.q.trim() || null, category:form.elements.category?.value || null, page:null});
     break;
@@ -2188,7 +2192,7 @@ document.addEventListener('pointerdown', event => {
 });
 document.addEventListener('change', event => {
     if (event.target.id === 'following-category') {
-        updateRouteQuery({category: event.target.value || null, page: null});
+        event.target.form.requestSubmit();
     } else if (event.target.matches('[data-post-attachment]')) {
         updatePostAttachment(event.target);
     }
