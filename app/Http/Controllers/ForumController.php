@@ -15,6 +15,7 @@ use App\Services\PostDeleteQuery;
 use App\Services\ReactionToggleQuery;
 use App\Services\BookmarkToggleQuery;
 use Illuminate\Database\Query\Builder;
+use Illuminate\Database\Query\Expression;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
@@ -353,12 +354,22 @@ class ForumController extends Controller
         abort_unless(Forum::canReplyCategory(DB::table('categories')->find($thread->category_id), $request->user()), 403, __('server.category_post_forbidden'));
         abort_unless($post->user_id===$request->user()->id || Forum::isModerator($request->user()),403);
         abort_if($thread->is_locked && !Forum::isModerator($request->user()),403,__('server.thread_locked'));
-        $data=$request->validate(['body'=>'required|string|min:1|max:50000']);
+        $data = $request->validate([
+            'body' => 'required|string|min:1|max:50000',
+            'revision' => 'sometimes|required|integer|min:0',
+        ]);
         // Moderator demotion, account ban, or thread lock may commit after
         // the User/Post/Thread preflight checks. Re-evaluate live authorization
         // inside the UPDATE; denied writes must not create an audit entry.
-        $updated = PostEditQuery::eligible($id, (int) $request->user()->id)
-            ->update($data + ['updated_at' => now()]);
+        $actor = (int) $request->user()->id;
+        $eligible = PostEditQuery::eligible($id, $actor);
+        $update = isset($data['revision']) ? (clone $eligible)->where('p.edit_version', (int) $data['revision']) : $eligible;
+        $updated = $update->update([
+            'body' => $data['body'], 'updated_at' => now(), 'edit_version' => new Expression('edit_version + 1'),
+        ]);
+        if ($updated !== 1 && isset($data['revision']) && $eligible->exists()) {
+            abort(409, __('server.post_edit_conflict'));
+        }
         abort_unless($updated === 1, 403, __('server.category_post_forbidden'));
         Forum::audit('post.edited',['post_id'=>$id]);
         return response()->json(['post'=>Forum::postData(DB::table('posts')->find($id),$request->user())]);

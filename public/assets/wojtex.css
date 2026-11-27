@@ -64,6 +64,11 @@
 .wx-composer .field small{font-size:12px}
 .wx-composer .editor textarea,.wx-thread-page .editor textarea{font-size:16px;line-height:1.8;padding:18px;min-height:210px}
 .wx-composer [data-form=new-topic] .editor textarea{min-height:280px}
+.wx-edit-refresh { min-height: 44px; margin-bottom: 12px; }
+.wx-edit-refresh[hidden] { display: none; }
+.wx-edit-source { margin-bottom: 12px; padding: 12px; border: 1px solid var(--line-strong); border-radius: 8px; }
+.wx-edit-source summary { cursor: pointer; color: var(--muted); font-weight: 600; }
+.wx-edit-source pre { margin: 10px 0 0; max-height: 12rem; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
 .wx-composer .editor-toolbar,.wx-thread-page .editor-toolbar{flex-wrap:wrap;padding:8px;gap:5px}
 .wx-composer .editor-toolbar button,.wx-thread-page .editor-toolbar button{width:38px;height:38px}
 .wx-composer .editor-toolbar small,.wx-thread-page .editor-toolbar small{font-size:10px}

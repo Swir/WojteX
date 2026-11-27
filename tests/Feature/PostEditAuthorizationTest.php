@@ -67,6 +67,31 @@ class PostEditAuthorizationTest extends TestCase
         $this->assertSame('Revised original post',DB::table('posts')->find($post)->body);
     }
 
+    public function test_stale_edit_revision_preserves_the_published_post_and_audit_log(): void
+    {
+        $owner = $this->account('Alice');
+        $moderator = $this->account('Carol', 'moderator');
+        [$thread, $post] = $this->topic($owner);
+        $endpoint = '/api/posts/'.$post;
+
+        $this->actingAs($owner)->getJson('/api/threads/'.$thread)
+            ->assertOk()->assertJsonPath('posts.0.revision', 0);
+        $this->actingAs($moderator)->patchJson($endpoint, ['body' => 'Saved by the moderator', 'revision' => 0])
+            ->assertOk()->assertJsonPath('post.revision', 1);
+        $this->actingAs($owner)->patchJson($endpoint, ['body' => 'Stale owner draft', 'revision' => 0])
+            ->assertConflict();
+        $this->assertDatabaseHas('posts', ['id' => $post, 'body' => 'Saved by the moderator', 'edit_version' => 1]);
+        $this->assertSame(1, DB::table('audit_logs')->where('action', 'post.edited')->count());
+
+        $this->patchJson($endpoint, ['body' => 'Owner edit after review', 'revision' => 1])
+            ->assertOk()->assertJsonPath('post.revision', 2);
+        $this->patchJson($endpoint, ['body' => 'Legacy edit without a revision'])
+            ->assertOk()->assertJsonPath('post.revision', 3);
+        DB::table('threads')->where('id', $thread)->update(['is_locked' => true]);
+        $this->patchJson($endpoint, ['body' => 'Locked thread edit', 'revision' => 0])->assertForbidden();
+        $this->assertDatabaseHas('posts', ['id' => $post, 'body' => 'Legacy edit without a revision', 'edit_version' => 3]);
+    }
+
     public function test_live_role_and_ban_guarded_by_same_update_statement(): void
     {
         $owner=$this->account('Bob');

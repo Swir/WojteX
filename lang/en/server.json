@@ -19,6 +19,7 @@
   "server.category_not_found": "The category was not found.",
   "server.thread_unavailable": "This topic is unavailable.",
   "server.post_unavailable": "This post is unavailable.",
+  "server.post_edit_conflict": "The post changed after you opened the editor. Load the current version before saving again.",
   "server.thread_locked": "This topic is locked.",
   "server.delete_first_post": "The first post can only be deleted together with its topic.",
   "server.self_reaction": "You cannot react to your own post.",

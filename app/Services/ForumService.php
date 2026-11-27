@@ -270,6 +270,7 @@ class ForumService
             'id'=>(int)$post->id,'thread_id'=>(int)$post->thread_id,
             'user_id'=>(int)$post->user_id,'body'=>$post->body,
             'body_format'=>$post->body_format,
+            'revision'=>(int) ($post->edit_version ?? 0),
             'body_html'=>self::renderPostBody($post->body,$post->body_format,$markdown),
             'created_at'=>$post->created_at,'updated_at'=>$post->updated_at,
             'author'=>self::publicUser($author),'reactions_count'=>$reactions,

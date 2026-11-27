@@ -1427,8 +1427,13 @@ function newTopicModal(){if(!ensureAuth())return;const categories=(state.bootstr
 function editPostModal(id) {
     const post = state.thread?.posts?.find(item => item.id === id);
     if (!post) return;
-    modal(tr('ui.compose.edit_title'), tr('ui.compose.edit_subtitle'), `<form data-form="edit-post" data-id="${id}" data-thread="${Number(state.thread.thread.id)}">
+    modal(tr('ui.compose.edit_title'), tr('ui.compose.edit_subtitle'), `<form data-form="edit-post" data-id="${id}" data-thread="${Number(state.thread.thread.id)}" data-revision="${Number(post.revision)}">
         <div class="form-error" role="alert"></div>
+        <button class="button button-secondary wx-edit-refresh" type="button" data-action="refresh-edit-source" hidden>${icon('clock')}${tx('ui.post.load_current_edit')}</button>
+        <details class="wx-edit-source" hidden>
+            <summary>${tx('ui.post.current_edit')}</summary>
+            <pre data-edit-source></pre>
+        </details>
         ${editor('body', post.body, tr('ui.compose.edit_placeholder'), post.body_format || 'markdown')}
         ${draftControls()}
         <div class="form-footer">
@@ -1437,6 +1442,32 @@ function editPostModal(id) {
         </div>
     </form>`, true);
     bindDraft($('[data-form="edit-post"]', dialog), id);
+}
+
+async function refreshEditSource(button) {
+    const form = button.form;
+    const postId = Number(form.dataset.id);
+    const threadId = Number(form.dataset.thread);
+    const {posts} = await request(`/api/threads/${threadId}?post=${postId}`);
+    if (!form.isConnected || !dialog.open) return;
+    const post = posts.find(item => item.id === postId);
+    if (!post) throw new Error(tr('ui.post.edit_source_unavailable'));
+    const published = post.body.replace(/\r\n?/g, '\n');
+    const entry = draftForms.get(form);
+    if (entry) {
+        const input = form.elements.body;
+        if (input.value === entry.published) input.value = published;
+        entry.published = published;
+        entry.revision = WojtexDrafts.revisionFor(published);
+    }
+    form.dataset.revision = post.revision;
+    $('.form-error', form).textContent = '';
+    const source = $('.wx-edit-source', form);
+    $('[data-edit-source]', source).textContent = published;
+    source.hidden = false;
+    source.open = true;
+    button.hidden = true;
+    $('summary', source).focus();
 }
 function attachmentModal(id){modal(tr('ui.attachment.title'),tr('ui.attachment.subtitle'),`<form data-form="attachment" data-id="${id}"><div class="form-error" role="alert"></div>${postAttachmentPicker('file', true)}<div class="form-footer"><button type="submit" class="button button-primary">${icon('upload')}${tx('ui.common.upload_file')}</button></div></form>`,false,'paperclip');}
 function categoryModal(id=null){const c=(state.admin?.categories||state.bootstrap.categories||[]).find(c=>c.id===id)||{name:'',description:'',color:'violet',icon:'code',is_private:false,parent_id:null};const optionIcons={code:tr('ui.category.icon_code'),game:tr('ui.category.icon_games'),star:tr('ui.category.icon_ideas'),rocket:tr('ui.category.icon_projects'),chat:tr('ui.category.icon_chat'),folder:tr('ui.category.icon_folder'),shield:tr('ui.category.icon_admin'),book:tr('ui.category.icon_guides'),help:tr('ui.category.icon_help'),terminal:tr('ui.category.icon_terminal')};modal(id?tr('ui.category.edit_title'):tr('ui.category.new_title'),tr('ui.category.subtitle'),`<form data-form="category" ${id?`data-id="${id}"`:''}><div class="form-error" role="alert"></div><label class="field"><span>${tx('ui.category.name')}</span><input name="name" required minlength="2" maxlength="120" value="${e(c.name)}"></label><label class="field"><span>${tx('ui.category.description')}</span><textarea name="description" maxlength="500">${e(c.description)}</textarea></label><div class="form-row"><label class="field"><span>${tx('ui.category.color')}</span><select name="color">${['violet','cyan','blue','green','amber','rose'].map(k=>`<option value="${k}" ${c.color===k?'selected':''}>${e(({violet:tr('ui.category.violet'),cyan:tr('ui.category.cyan'),blue:tr('ui.category.blue'),green:tr('ui.category.green'),amber:tr('ui.category.amber'),rose:tr('ui.category.rose'),slate:tr('ui.category.slate')})[k])}</option>`).join('')}</select></label><label class="field"><span>${tx('ui.category.icon')}</span><select name="icon">${Object.entries(optionIcons).map(([k,v])=>`<option value="${k}" ${c.icon===k?'selected':''}>${e(v)}</option>`).join('')}</select></label></div><label class="checkbox-field"><input name="is_private" type="checkbox" ${c.is_private?'checked':''}><span>${tx('ui.category.private')}</span></label><div class="form-footer"><button class="button button-primary" type="submit">${icon('check')}${e(id?tr('ui.common.save_changes'):tr('ui.category.create'))}</button></div></form>`,false,'layers');}
@@ -1678,6 +1709,7 @@ case 'react':if(ensureAuth()){const r=await request(`/api/posts/${id}/reaction`,
 case 'quote':quotePost(button,id,event.detail > 0);break;
 case 'focus-reply':if(ensureAuth()){const field=$('#reply-panel textarea');if(field){setEditorPreview(field.closest('.editor'),false);field.focus({preventScroll:true});field.scrollIntoView({behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth',block:'center'});}}break;
 case 'edit-post':editPostModal(id);break;
+case 'refresh-edit-source':await refreshEditSource(button);break;
 case 'attach-post':attachmentModal(id);break;
 case 'clear-post-attachment': {
     const input = $('[data-post-attachment]', button.closest('.wx-attachment-picker'));
@@ -1766,7 +1798,14 @@ case 'edit-post': {
     const thread = Number(form.dataset.thread);
     const submitted = draftSnapshot(form);
     saveDraft(form);
-    await request(`/api/posts/${Number(form.dataset.id)}`, {method: 'PATCH', body: {body: values.body}});
+    try {
+        await request(`/api/posts/${Number(form.dataset.id)}`, {
+            method: 'PATCH', body: {body: values.body, revision: Number(form.dataset.revision)},
+        });
+    } catch (err) {
+        if (err.status === 409) $('[data-action="refresh-edit-source"]', form).hidden = false;
+        throw err;
+    }
     clearPublishedDraft(form, submitted);
     if (form.isConnected && dialog.open) closeDialog();
     const route = routeInfo();
