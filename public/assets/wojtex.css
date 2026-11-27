@@ -97,6 +97,12 @@
 .composer-attachment summary .icon{width:16px;height:16px;vertical-align:middle;margin-right:6px}
 .wx-composer .composer-attachment .field{margin:12px 0 0}
 .wx-attachment-picker .field { margin-bottom: 0; }
+.field .wx-attachment-drop-hint { display: none; }
+@media (any-hover: hover) and (any-pointer: fine) {
+ .wx-attachment-drop { border: 1px dashed var(--line-strong); border-radius: 10px; padding: 12px; }
+ .field .wx-attachment-drop-hint { display: block; color: var(--text); }
+}
+.wx-attachment-drop.wx-attachment-dragging { outline: 2px solid var(--accent); background: var(--accent-soft); }
 .wx-attachment-picker input[aria-invalid="true"] { border-color: var(--red); }
 .wx-attachment-selection { display: flex; flex-wrap: wrap; align-items: center; gap: 0 10px; }
 .wx-attachment-selection p, [data-attachment-error] { margin: 8px 0 0; font-size: 13px; overflow-wrap: anywhere; }

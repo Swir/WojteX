@@ -1585,9 +1585,10 @@ function postAttachmentPicker(name, required = false) {
     const hintId = `attachment-${name}-hint`;
     const errorId = `attachment-${name}-error`;
     return `<div class="wx-attachment-picker">
-        <label class="field">
+        <label class="field wx-attachment-drop" data-attachment-drop>
             <span>${tx(required ? 'ui.common.choose_file' : 'ui.post.attachment')}</span>
             <input type="file" name="${name}" accept="${postAttachmentExtensions.join(',')}" ${required ? 'required ' : ''}data-post-attachment aria-describedby="${hintId} ${errorId}">
+            <small class="wx-attachment-drop-hint" aria-hidden="true">${tx('ui.attachment.drop_hint')}</small>
             <small id="${hintId}">${tx(required ? 'ui.attachment.limits' : 'ui.compose.file_help')}</small>
             ${required ? '' : `<small>${tx('ui.drafts.file_help')}</small>`}
         </label>
@@ -2191,6 +2192,38 @@ document.addEventListener('change', event => {
     } else if (event.target.matches('[data-post-attachment]')) {
         updatePostAttachment(event.target);
     }
+});
+document.addEventListener('dragover', event => {
+    const zone = event.target.closest('[data-attachment-drop]');
+    if (!zone || !event.dataTransfer?.types.includes('Files')) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'copy';
+    zone.classList.add('wx-attachment-dragging');
+});
+document.addEventListener('dragleave', event => {
+    const zone = event.target.closest('[data-attachment-drop]');
+    if (zone && !zone.contains(event.relatedTarget)) zone.classList.remove('wx-attachment-dragging');
+});
+document.addEventListener('drop', event => {
+    const zone = event.target.closest('[data-attachment-drop]');
+    if (!zone) return;
+    zone.classList.remove('wx-attachment-dragging');
+    const files = event.dataTransfer?.files;
+    if (!files?.length) return;
+    event.preventDefault();
+    const input = $('[data-post-attachment]', zone);
+    const feedback = $('[data-attachment-error]', zone.closest('.wx-attachment-picker'));
+    if (files.length !== 1) {
+        feedback.textContent = tr('ui.attachment.drop_one');
+        return;
+    }
+    try {
+        input.files = files;
+    } catch (_) {
+        feedback.textContent = tr('ui.attachment.drop_unavailable');
+        return;
+    }
+    updatePostAttachment(input);
 });
 dialog.addEventListener('click',event=>{if(event.target===dialog){const r=dialog.getBoundingClientRect();if(event.clientX<r.left||event.clientX>r.right||event.clientY<r.top||event.clientY>r.bottom)closeDialog();}});
 document.addEventListener('keydown', event => {

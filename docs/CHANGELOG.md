@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Drag a file into the attachment picker when creating a topic or adding an attachment to a post. The file is checked before you send it.
 - Open attached PNG, JPEG, GIF and WebP images in a preview. Images load only when requested, and the original download remains available.
 - Copy code directly from posts and the editor preview. If clipboard access is unavailable, the code is selected for manual copying.
 - The mobile menu has a close button, keeps keyboard focus inside while open, and restores focus when dismissed.
