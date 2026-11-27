@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Search within a discussion across all of its pages. Results show text excerpts and link straight to the matching posts.
 - Jump to the latest post from a discussion or its activity timestamp on topic lists. The view opens on the final page and focuses that post.
 - See a selected attachment’s name and size, remove it before sending, and catch unsupported extensions or files over 5 MiB before publishing.
 - Mark unread private messages across all mailbox pages in one action. Messages newer than the last mailbox refresh stay unread.

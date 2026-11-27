@@ -214,6 +214,33 @@ class ForumSecurityTest extends TestCase
         $this->getJson('/api/threads/'.$thread.'?post='.$newPost)->assertNotFound();
     }
 
+    public function test_searching_inside_a_thread_paginates_literal_matches_with_live_permissions(): void
+    {
+        $owner = $this->user('admin');
+        $category = $this->category();
+        [$thread, $first] = $this->thread($owner, $category, 'Search in this topic', body: str_repeat('Context ', 45).'Work is 100% complete.');
+        $this->thread($owner, $category, 'Different thread', body: 'Also 100% complete.');
+        $this->makePost($owner, $thread, 'This says 100 tickets.');
+        for ($index = 0; $index < 10; $index++) {
+            $last = $this->makePost($owner, $thread, 'Another 100% result '.$index);
+        }
+        $url = '/api/threads/'.$thread.'/posts/search';
+        $this->getJson($url.'?q=')->assertUnprocessable()->assertJsonValidationErrors('q');
+        $page = $this->getJson($url.'?q=100%25')->assertOk()->assertJsonCount(10, 'data')
+            ->assertJsonPath('data.0.id', $first)->assertJsonPath('next_page', 2);
+        $this->assertStringStartsWith('…', $page->json('data.0.excerpt'));
+        $this->assertStringContainsString('100% complete', $page->json('data.0.excerpt'));
+        $this->assertArrayNotHasKey('body', $page->json('data.0'));
+        $this->getJson($url.'?q=100%25&page=2')->assertOk()->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id', $last)->assertJsonPath('next_page', null);
+
+        DB::table('categories')->where('id', $category)->update(['is_private' => true]);
+        $this->getJson($url.'?q=100%25')->assertNotFound();
+        $this->actingAs($owner)->getJson($url.'?q=100%25')->assertOk();
+        DB::table('users')->where('id', $owner->id)->update(['role' => 'member']);
+        $this->getJson($url.'?q=100%25')->assertNotFound();
+    }
+
     public function test_latest_post_opens_the_final_page_and_obeys_normal_topic_access(): void
     {
         $owner = $this->user('admin');

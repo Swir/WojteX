@@ -99,6 +99,37 @@ class ForumController extends Controller
         return response()->json(['html' => Forum::bodyHtml($data['body'], $data['format'])]);
     }
 
+    public function searchPosts(Request $request, int $id)
+    {
+        $data = $request->validate(['q' => 'required|string|min:2|max:150', 'page' => 'nullable|integer|min:1|max:100000']);
+        $term = trim($data['q']);
+        $visible = Forum::visibleThreads($request->user())->where('t.id', $id);
+        abort_unless($visible->exists(), 404, __('server.thread_unavailable'));
+
+        $posts = DB::table('posts')->whereIn('posts.thread_id', $visible->select('t.id'));
+        $page = ThreadSearchQuery::applyPostBody($posts, $term)->orderBy('posts.id')
+            ->simplePaginate(10, ['posts.id', 'posts.body', 'posts.created_at'], 'page', $data['page'] ?? 1);
+
+        return response()->json([
+            'data' => $page->getCollection()->map(fn ($post) => [
+                'id' => (int) $post->id,
+                'excerpt' => $this->postSearchExcerpt($post->body, $term),
+                'created_at' => $post->created_at,
+            ])->values(),
+            'next_page' => $page->hasMorePages() ? $page->currentPage() + 1 : null,
+        ]);
+    }
+
+    private function postSearchExcerpt(string $body, string $term): string
+    {
+        $length = 220;
+        $position = mb_stripos($body, $term);
+        $start = $position === false ? 0 : max(0, $position - 45);
+        $excerpt = trim(preg_replace('/\s+/u', ' ', mb_substr($body, $start, $length)) ?? '');
+
+        return ($start > 0 ? '…' : '').$excerpt.(mb_strlen($body) > $start + $length ? '…' : '');
+    }
+
     public function create(Request $request)
     {
         $data=$request->validate(['category_id'=>'required|integer','title'=>'required|string|min:5|max:180','body'=>'required|string|min:3|max:50000']);

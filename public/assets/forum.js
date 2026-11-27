@@ -262,6 +262,7 @@ async function navigate() {
     view.setAttribute('aria-busy', 'true');
     content.innerHTML = loading();
     if (quickSearchDialog.open) quickSearchDialog.close();
+    if (dialog.open && $('[data-form="thread-post-search"]', dialog)) closeDialog();
     $('#workspace-grid').classList.toggle('chat-view', route.name === 'chat');
     try {
         if (route.name === 'following' && pendingRead) {
@@ -593,6 +594,7 @@ async function renderThread(id,token){
             <div class="thread-head-actions">
                 ${canReply?`<button class="button button-primary" data-action="focus-reply">${icon('message')}${tx('ui.topic.reply')}</button>`:''}
                 ${r.total_posts > 1 ? `<a class="button button-secondary" href="#/thread/${id}?latest=1">${icon('chevron-down')}${tx('ui.topic.latest_post')}</a>` : ''}
+                <button type="button" class="button button-secondary" data-action="thread-post-search">${icon('search')}${tx('ui.thread_search.open')}</button>
                 <button type="button" class="button ${t.bookmarked ? 'button-primary' : 'button-secondary'}" data-action="bookmark" data-id="${id}" aria-pressed="${!!t.bookmarked}" aria-label="${tx('ui.topic.save')}" title="${e(bookmarkAction(t.bookmarked))}">${icon('bookmark')}<span data-bookmark-label>${t.bookmarked ? tx('ui.topic.saved') : tx('ui.topic.save')}</span></button>
                 <button type="button" class="button button-secondary wx-follow-button" data-action="follow-thread" data-id="${id}" aria-label="${tx('ui.follow.follow')}" aria-pressed="${!!r.follow}">${followButtonContent(r.follow)}</button>
                 <button class="button button-ghost" data-action="copy-thread">${icon('link')}${tx('ui.topic.copy')}</button>
@@ -619,11 +621,15 @@ async function renderThread(id,token){
             history.replaceState(history.state, '', `#/thread/${id}?post=${Number(r.target_post_id)}`);
             state.route = routeInfo();
         }
-        target.tabIndex = -1;
-        target.focus({preventScroll: true});
-        target.scrollIntoView({block: 'start'});
+        focusThreadPost(target);
     }
     trackThreadReads(r);
+}
+
+function focusThreadPost(post) {
+    post.tabIndex = -1;
+    post.focus({preventScroll: true});
+    post.scrollIntoView({block: 'start'});
 }
 
 function followButtonContent(follow) {
@@ -1195,6 +1201,62 @@ quickSearchDialog.addEventListener('keydown', event => {
 function modal(title,subtitle,content,wide=false,ico=null){flushDrafts();dialog.classList.toggle('wide',wide);dialog.classList.toggle('wx-composer',/data-form="(?:new-topic|edit-post)"/.test(content));$('#dialog-content').innerHTML=`<div class="dialog-header"><div>${ico?`<div class="dialog-icon">${icon(ico)}</div>`:''}<h2 id="dialog-title">${e(title)}</h2>${subtitle?`<p>${e(subtitle)}</p>`:''}</div><button class="icon-button dialog-close" data-action="close-dialog" aria-label="${tx('ui.common.close')}">${icon('close')}</button></div><div class="dialog-content">${content}</div>`;if(!dialog.open)dialog.showModal();setTimeout(()=>{const focus=$('input:not([type=hidden]),textarea,select',dialog);if(focus)focus.focus();},50);}
 function closeDialog(){if(dialog.open)dialog.close();}
 
+let threadPostSearchRequest;
+
+function openThreadPostSearch() {
+    const thread = state.thread?.thread;
+    if (!thread || dialog.open) return;
+    modal(tr('ui.thread_search.open'), thread.title, `<form data-form="thread-post-search" data-thread="${Number(thread.id)}">
+        <div class="form-error" role="alert"></div>
+        <div class="wx-thread-search-controls">
+            <label class="field"><span>${tx('ui.thread_search.query')}</span><input type="search" name="q" minlength="2" maxlength="150" required autocomplete="off"></label>
+            <button type="submit" class="button button-primary">${icon('search')}${tx('ui.thread_search.submit')}</button>
+        </div>
+        <p class="wx-search-status" data-thread-search-status role="status"></p>
+        <ul class="wx-thread-search-results" data-thread-search-results></ul>
+        <button type="button" class="button button-secondary wx-thread-search-more" data-action="thread-post-search-more" hidden>${tx('ui.thread_search.more')}</button>
+    </form>`, true, 'search');
+}
+
+async function loadThreadPostSearch(form, term, page = 1) {
+    const requestId = new AbortController();
+    threadPostSearchRequest?.abort();
+    threadPostSearchRequest = requestId;
+    const id = Number(form.dataset.thread);
+    const list = $('[data-thread-search-results]', form);
+    const status = $('[data-thread-search-status]', form);
+    const more = $('[data-action="thread-post-search-more"]', form);
+    if (page === 1) {
+        form.dataset.query = term;
+        list.replaceChildren();
+        more.hidden = true;
+    }
+    status.textContent = tr('ui.thread_search.loading');
+
+    try {
+        const query = new URLSearchParams({q: term, page: String(page)});
+        const result = await request(`/api/threads/${id}/posts/search?${query}`, {signal: requestId.signal});
+        if (requestId.signal.aborted || !form.isConnected || !dialog.open) return;
+        const previous = list.children.length;
+        list.insertAdjacentHTML('beforeend', result.data.map(post => `<li>
+            <a class="wx-search-result" href="#/thread/${id}?post=${Number(post.id)}" data-action="thread-post-search-result" data-id="${Number(post.id)}">
+                ${icon('message')}<span><strong>${e(post.excerpt)}</strong><small>${e(dateTitle(post.created_at))}</small></span>${icon('arrow-up-right')}
+            </a></li>`).join(''));
+        const shown = list.children.length;
+        status.textContent = shown ? tr('ui.thread_search.results', {query: term, count: counted(shown, 'posts')})
+            : tr('ui.thread_search.empty', {query: term});
+        more.hidden = !result.next_page;
+        more.dataset.page = result.next_page || '';
+        if (page > 1) $('a', list.children[previous] || list)?.focus();
+    } catch (err) {
+        if (requestId.signal.aborted || !form.isConnected || !dialog.open) return;
+        status.textContent = '';
+        throw err;
+    } finally {
+        if (threadPostSearchRequest === requestId) threadPostSearchRequest = null;
+    }
+}
+
 async function copyForumLink(path, title, addressLabel, copiedMessage) {
     const url = location.origin + location.pathname + path;
     try {
@@ -1361,6 +1423,16 @@ case 'new-topic':newTopicModal();break;
 case 'discard-draft':discardDraft(button.closest('form'));break;
 case 'overwrite-draft':saveDraft(button.closest('form'), true);break;
 case 'quick-search':openQuickSearch();break;
+case 'thread-post-search':openThreadPostSearch();break;
+case 'thread-post-search-more':
+    await loadThreadPostSearch(button.form, button.form.dataset.query, Number(button.dataset.page));
+    break;
+case 'thread-post-search-result': {
+    closeDialog();
+    const post = document.getElementById(`post-${id}`);
+    if (button.hash === location.hash && post) focusThreadPost(post);
+    break;
+}
 case 'sort':updateRouteQuery({sort:button.dataset.sort,page:null});break;
 case 'clear-saved-filters':$('#saved-query')?.focus({preventScroll:true});updateRouteQuery({q:null,category:null,page:null});break;
 case 'page': {
@@ -1501,9 +1573,13 @@ case 'edit-category':categoryModal(id);break;
 case 'category-visibility':{const c=(state.admin.categories||state.bootstrap.categories).find(c=>c.id===id);const makePublic=!!c.is_private;confirmModal(makePublic?tr('ui.admin.public_title'):tr('ui.admin.private_title'),makePublic?tr('ui.admin.public_body',{name:c.name}):tr('ui.admin.private_body',{name:c.name}),makePublic?tr('ui.admin.make_public'):tr('ui.admin.make_private'),async()=>{await request(`/api/admin/categories/${id}`,{method:'PATCH',body:{is_private:!c.is_private}});closeDialog();await loadBootstrap();await refreshAdmin();toast(tr('ui.admin.visibility_saved'));},false);}break;
 }}
 
-document.addEventListener('click',async event=>{const button=event.target.closest('[data-action]');if(!button||button.disabled)return;if(button.tagName!=='A')event.preventDefault();if(button.dataset.busy==='1')return;const immediate=['toggle-menu','appearance','reset-appearance','login','register','account','close-dialog','close-on-nav','new-topic','discard-draft','overwrite-draft','quick-search','sort','page','quote','edit-post','attach-post','clear-post-attachment','delete-post','delete-thread','delete-shout','format','editor-preview','message-reply','admin-tab','ban-user','group-delete','new-category','edit-category','category-visibility'];const busy=!immediate.includes(button.dataset.action);try{if(busy){button.dataset.busy='1';button.setAttribute('aria-busy','true');button.disabled=true;}await handleAction(button);}catch(err){toast(err.message,true);if(err.status===401){state.user=null;authModal('login');}}finally{if(busy){button.dataset.busy='0';button.removeAttribute('aria-busy');button.disabled=false;}}});
+document.addEventListener('click',async event=>{const button=event.target.closest('[data-action]');if(!button||button.disabled)return;if(button.tagName!=='A')event.preventDefault();if(button.dataset.busy==='1')return;const immediate=['toggle-menu','appearance','reset-appearance','login','register','account','close-dialog','close-on-nav','new-topic','discard-draft','overwrite-draft','quick-search','thread-post-search','thread-post-search-result','sort','page','quote','edit-post','attach-post','clear-post-attachment','delete-post','delete-thread','delete-shout','format','editor-preview','message-reply','admin-tab','ban-user','group-delete','new-category','edit-category','category-visibility'];const busy=!immediate.includes(button.dataset.action);try{if(busy){button.dataset.busy='1';button.setAttribute('aria-busy','true');button.disabled=true;}await handleAction(button);}catch(err){toast(err.message,true);if(err.status===401){state.user=null;authModal('login');}}finally{if(busy){button.dataset.busy='0';button.removeAttribute('aria-busy');button.disabled=false;}}});
 
 async function submitForm(form){const type=form.dataset.form;const values=Object.fromEntries(new FormData(form).entries());switch(type){
+case 'thread-post-search':
+    if (Array.from(values.q.trim()).length < 2) throw new Error(tr('ui.thread_search.minimum'));
+    await loadThreadPostSearch(form, values.q.trim());
+    break;
 case 'saved-filters':
     updateRouteQuery({q:values.q.trim() || null, category:form.elements.category?.value || null, page:null});
     break;
@@ -1630,6 +1706,9 @@ document.addEventListener('input', event => {
 document.addEventListener('change',event=>{if(event.target.id==='locale-picker'){changeLocale(event.target);return;}if(event.target.matches('[data-form="import"] input[name=file]')){state.importPreviewOK=false;state.importFile=event.target.files[0]||null;state.importReport=null;const result=$('#import-result');if(result)result.innerHTML='';}});
 $('#sidebar-backdrop').addEventListener('click',closeSidebar);
 dialog.addEventListener('close', flushDrafts);
+dialog.addEventListener('close', () => {
+    if (!dialog.open) threadPostSearchRequest?.abort();
+});
 document.addEventListener('invalid', event => {
     if (event.target.matches('.editor textarea[hidden]')) {
         setEditorPreview(event.target.closest('.editor'), false);

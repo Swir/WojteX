@@ -38,6 +38,11 @@ final class ThreadSearchQuery
         return $threads->whereRaw("t.title LIKE ? ESCAPE '!'", [self::containsPattern($term)]);
     }
 
+    public static function applyPostBody(Builder $posts, string $term): Builder
+    {
+        return $posts->whereRaw("posts.body LIKE ? ESCAPE '!'", [self::containsPattern($term)]);
+    }
+
     private static function containsPattern(string $term): string
     {
         // Keep '%' and '_' as actual text; otherwise an innocent search for
