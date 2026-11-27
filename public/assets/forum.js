@@ -1300,6 +1300,7 @@ function quickSearchLink(href, label, symbol, detail = '') {
 
 function openQuickSearch() {
     if (quickSearchDialog.open || dialog.open) return;
+    closeSidebar();
     stopQuickSearch();
     quickSearchDialog.innerHTML = `
         <header class="wx-search-heading"><h2 id="quick-search-title">${tx('ui.quick_search.title')}</h2>
@@ -1616,17 +1617,48 @@ async function refreshEditSource(button) {
 function attachmentModal(id){modal(tr('ui.attachment.title'),tr('ui.attachment.subtitle'),`<form data-form="attachment" data-id="${id}"><div class="form-error" role="alert"></div>${postAttachmentPicker('file', true)}<div class="form-footer"><button type="submit" class="button button-primary">${icon('upload')}${tx('ui.common.upload_file')}</button></div></form>`,false,'paperclip');}
 function categoryModal(id=null){const c=(state.admin?.categories||state.bootstrap.categories||[]).find(c=>c.id===id)||{name:'',description:'',color:'violet',icon:'code',is_private:false,parent_id:null};const optionIcons={code:tr('ui.category.icon_code'),game:tr('ui.category.icon_games'),star:tr('ui.category.icon_ideas'),rocket:tr('ui.category.icon_projects'),chat:tr('ui.category.icon_chat'),folder:tr('ui.category.icon_folder'),shield:tr('ui.category.icon_admin'),book:tr('ui.category.icon_guides'),help:tr('ui.category.icon_help'),terminal:tr('ui.category.icon_terminal')};modal(id?tr('ui.category.edit_title'):tr('ui.category.new_title'),tr('ui.category.subtitle'),`<form data-form="category" ${id?`data-id="${id}"`:''}><div class="form-error" role="alert"></div><label class="field"><span>${tx('ui.category.name')}</span><input name="name" required minlength="2" maxlength="120" value="${e(c.name)}"></label><label class="field"><span>${tx('ui.category.description')}</span><textarea name="description" maxlength="500">${e(c.description)}</textarea></label><div class="form-row"><label class="field"><span>${tx('ui.category.color')}</span><select name="color">${['violet','cyan','blue','green','amber','rose'].map(k=>`<option value="${k}" ${c.color===k?'selected':''}>${e(({violet:tr('ui.category.violet'),cyan:tr('ui.category.cyan'),blue:tr('ui.category.blue'),green:tr('ui.category.green'),amber:tr('ui.category.amber'),rose:tr('ui.category.rose'),slate:tr('ui.category.slate')})[k])}</option>`).join('')}</select></label><label class="field"><span>${tx('ui.category.icon')}</span><select name="icon">${Object.entries(optionIcons).map(([k,v])=>`<option value="${k}" ${c.icon===k?'selected':''}>${e(v)}</option>`).join('')}</select></label></div><label class="checkbox-field"><input name="is_private" type="checkbox" ${c.is_private?'checked':''}><span>${tx('ui.category.private')}</span></label><div class="form-footer"><button class="button button-primary" type="submit">${icon('check')}${e(id?tr('ui.common.save_changes'):tr('ui.category.create'))}</button></div></form>`,false,'layers');}
 function confirmModal(title,text,buttonLabel,callback,danger=true){state.confirmAction=callback;modal(title,text,`<form data-form="confirm"><div class="form-error" role="alert"></div><div class="form-footer"><button type="button" class="button button-ghost" data-action="close-dialog">${tx('ui.common.cancel')}</button><button type="submit" class="button ${danger?'button-danger':'button-primary'}">${e(buttonLabel)}</button></div></form>`,false,danger?'alert':'info');}
+const mobileSidebar = window.matchMedia('(max-width: 740px)');
+
 function setSidebarOpen(open) {
     const sidebar = $('#sidebar');
     const trigger = $('.mobile-menu');
+    open = open && mobileSidebar.matches;
     if (sidebar.classList.contains('open') === open) return;
     sidebar.classList.toggle('open', open);
     $('#sidebar-backdrop').classList.toggle('visible', open);
+    document.documentElement.classList.toggle('wx-mobile-menu-open', open);
+    $('.app-shell').inert = open;
+    $('.skip-link').inert = open;
     trigger.setAttribute('aria-expanded', String(open));
-    if (open) $('.brand', sidebar).focus();
-    else if (sidebar.contains(document.activeElement) && trigger.getClientRects().length) trigger.focus();
+    if (open) {
+        sidebar.setAttribute('role', 'dialog');
+        sidebar.setAttribute('aria-modal', 'true');
+        $('.brand', sidebar).focus({preventScroll: true});
+    } else {
+        sidebar.removeAttribute('role');
+        sidebar.removeAttribute('aria-modal');
+        (mobileSidebar.matches ? trigger : $('.brand', sidebar)).focus({preventScroll: true});
+    }
 }
 function closeSidebar() { setSidebarOpen(false); }
+
+function handleSidebarKeys(event) {
+    const sidebar = $('#sidebar.open');
+    if (!sidebar) return false;
+    if (event.key === 'Escape') {
+        event.preventDefault();
+        closeSidebar();
+    } else if (event.key === 'Tab') {
+        const controls = $$('a[href], button:not([disabled])', sidebar).filter(item => item.tabIndex >= 0 && item.getClientRects().length);
+        const edge = event.shiftKey ? controls[0] : controls.at(-1);
+        const opposite = event.shiftKey ? controls.at(-1) : controls[0];
+        if (document.activeElement === edge || !sidebar.contains(document.activeElement)) {
+            event.preventDefault();
+            opposite?.focus();
+        }
+    } else return false;
+    return true;
+}
 function updateRouteQuery(values){const route=routeInfo();Object.entries(values).forEach(([k,v])=>v===null?route.query.delete(k):route.query.set(k,String(v)));const base=route.name==='home'?'':route.name+(route.id?'/'+route.id:'');location.hash='/'+base+(route.query.size?'?'+route.query.toString():'');}
 function reportReasonLabel(reason){
     const labels={spam:tx('ui.reports.reason_spam'),harassment:tx('ui.reports.reason_harassment'),
@@ -1719,6 +1751,7 @@ async function refreshAdmin(){state.admin=await request('/api/admin');if(state.a
 
 async function handleAction(button,event){const a=button.dataset.action,id=Number(button.dataset.id);switch(a){
 case 'toggle-menu':setSidebarOpen(button.getAttribute('aria-expanded') !== 'true');break;
+case 'close-menu':closeSidebar();break;
 case 'appearance':modal(tr('ui.appearance.title'),tr('ui.appearance.subtitle'),WojtexAppearance.render(tx),true,'sun');break;
 case 'reset-appearance':{const saved=WojtexAppearance.reset();$('#wx-appearance-status').textContent=tr(saved?'ui.appearance.saved_hint':'ui.appearance.storage_unavailable');}break;
 case 'login':if(state.route?.name==='reset-password'){history.replaceState(null,'',location.pathname+location.search+'#/login');await navigate();}else authModal('login');break;
@@ -1876,7 +1909,7 @@ case 'edit-category':categoryModal(id);break;
 case 'category-visibility':{const c=(state.admin.categories||state.bootstrap.categories).find(c=>c.id===id);const makePublic=!!c.is_private;confirmModal(makePublic?tr('ui.admin.public_title'):tr('ui.admin.private_title'),makePublic?tr('ui.admin.public_body',{name:c.name}):tr('ui.admin.private_body',{name:c.name}),makePublic?tr('ui.admin.make_public'):tr('ui.admin.make_private'),async()=>{await request(`/api/admin/categories/${id}`,{method:'PATCH',body:{is_private:!c.is_private}});closeDialog();await loadBootstrap();await refreshAdmin();toast(tr('ui.admin.visibility_saved'));},false);}break;
 }}
 
-document.addEventListener('click',async event=>{const button=event.target.closest('[data-action]');if(!button||button.disabled)return;if(button.tagName!=='A')event.preventDefault();if(button.dataset.busy==='1')return;const immediate=['toggle-menu','appearance','reset-appearance','login','register','account','close-dialog','close-on-nav','new-topic','discard-draft','overwrite-draft','quick-search','thread-post-search','thread-post-search-result','sort','page','quote','edit-post','attach-post','clear-post-attachment','delete-post','delete-thread','delete-shout','format','editor-preview','message-reply','admin-tab','ban-user','group-delete','new-category','edit-category','category-visibility'];const busy=!immediate.includes(button.dataset.action);try{if(busy){button.dataset.busy='1';button.setAttribute('aria-busy','true');button.disabled=true;}await handleAction(button,event);}catch(err){toast(err.message,true);if(err.status===401){state.user=null;setUnreadMessages(0,-Infinity);authModal('login');}}finally{if(busy){button.dataset.busy='0';button.removeAttribute('aria-busy');button.disabled=false;}}});
+document.addEventListener('click',async event=>{const button=event.target.closest('[data-action]');if(!button||button.disabled)return;if(button.tagName!=='A')event.preventDefault();if(button.dataset.busy==='1')return;const immediate=['toggle-menu','close-menu','appearance','reset-appearance','login','register','account','close-dialog','close-on-nav','new-topic','discard-draft','overwrite-draft','quick-search','thread-post-search','thread-post-search-result','sort','page','quote','edit-post','attach-post','clear-post-attachment','delete-post','delete-thread','delete-shout','format','editor-preview','message-reply','admin-tab','ban-user','group-delete','new-category','edit-category','category-visibility'];const busy=!immediate.includes(button.dataset.action);try{if(busy){button.dataset.busy='1';button.setAttribute('aria-busy','true');button.disabled=true;}await handleAction(button,event);}catch(err){toast(err.message,true);if(err.status===401){state.user=null;setUnreadMessages(0,-Infinity);authModal('login');}}finally{if(busy){button.dataset.busy='0';button.removeAttribute('aria-busy');button.disabled=false;}}});
 
 async function submitForm(form){const type=form.dataset.form;const values=Object.fromEntries(new FormData(form).entries());switch(type){
 case 'page-jump': {
@@ -2031,6 +2064,13 @@ document.addEventListener('input', event => {
 });
 document.addEventListener('change',event=>{if(event.target.id==='locale-picker'){changeLocale(event.target);return;}if(event.target.matches('[data-form="import"] input[name=file]')){state.importPreviewOK=false;state.importFile=event.target.files[0]||null;state.importReport=null;const result=$('#import-result');if(result)result.innerHTML='';}});
 $('#sidebar-backdrop').addEventListener('click',closeSidebar);
+mobileSidebar.addEventListener('change', event => { if (!event.matches) closeSidebar(); });
+$('#sidebar').addEventListener('click', event => {
+    const link = event.target.closest('a[href^="#/"]');
+    if (!link || !$('#sidebar').classList.contains('open') || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+    closeSidebar();
+    if (link.hash !== location.hash) $('#main-content').focus({preventScroll: true});
+});
 dialog.addEventListener('close', flushDrafts);
 dialog.addEventListener('close', () => {
     if (!dialog.open) threadPostSearchRequest?.abort();
@@ -2073,6 +2113,7 @@ document.addEventListener('change', event => {
 dialog.addEventListener('click',event=>{if(event.target===dialog){const r=dialog.getBoundingClientRect();if(event.clientX<r.left||event.clientX>r.right||event.clientY<r.top||event.clientY>r.bottom)closeDialog();}});
 document.addEventListener('keydown', event => {
     if (event.defaultPrevented || event.isComposing) return;
+    if (handleSidebarKeys(event)) return;
     const key = event.key.toLowerCase();
     if (event.ctrlKey !== event.metaKey && !event.altKey && !event.shiftKey && event.target.matches('.editor textarea')) {
         const control = $$('[data-editor-shortcut]', event.target.closest('.editor'))
@@ -2091,7 +2132,6 @@ document.addEventListener('keydown', event => {
         if (quickSearchDialog.open) $('#quick-search-input', quickSearchDialog).focus();
         else openQuickSearch();
     }
-    if (event.key === 'Escape') closeSidebar();
 });
 $('.skip-link').addEventListener('click', event => {
     event.preventDefault();

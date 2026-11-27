@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- The mobile menu has a close button, keeps keyboard focus inside while open, and restores focus when dismissed.
 - Enter a page number to jump directly to it in long discussions and topic lists.
 - Category and discussion pages show the path through parent categories, with links back to each level and the category directory.
 - Filter the category directory by category name, description or parent category. The filter accepts searches without accents and stays in the address.

@@ -279,6 +279,7 @@
 .wx-mailbox-nav .topic-tab:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .wx-mail-badge { margin-inline-start: auto; min-width: 21px; padding: 2px 5px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); text-align: center; font-size: 11px; font-weight: 650; }
 .mobile-menu { position: relative; }
+.icon-button.wx-sidebar-close { display: none; }
 .wx-mail-menu-dot { position: absolute; top: 5px; inset-inline-end: 5px; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); pointer-events: none; }
 .wx-mailbox-heading { flex-wrap: wrap; gap: 8px 12px; }
 .wx-mailbox-heading .button { min-height: 44px; white-space: normal; text-align: start; }
@@ -366,6 +367,11 @@
 .wx-search-trigger:focus-visible, .wx-search-result:focus-visible, .wx-category-card:focus-visible, .wx-directory-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 @media (max-width: 740px) {
+    :root.wx-mobile-menu-open { overflow: hidden; }
+    .sidebar.open { overflow-y: auto; overscroll-behavior: contain; }
+    .sidebar.open .wx-sidebar-close { display: inline-flex; position: absolute; top: 10px; inset-inline-end: 10px; width: 44px; height: 44px; }
+    .sidebar.open .brand { margin-inline-end: 40px; }
+    .wx-sidebar-close:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
     .editor-toolbar button.wx-editor-preview-toggle { min-height: 44px; }
     .wx-topic-row-personal { grid-template-columns: 32px minmax(0, 1fr) 44px; }
     .wx-thread-page .post-card:focus { scroll-margin-top: 132px; }

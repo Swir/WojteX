@@ -11,11 +11,11 @@
     <link rel="icon" type="image/svg+xml" href="/assets/wojtex.svg?v=0.1.0-beta.1">
     <link rel="stylesheet" href="/assets/forum.css?v=0.1.0-beta.1">
     <script type="application/json" id="veyra-i18n">{!! json_encode($localePayload, JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT|JSON_UNESCAPED_UNICODE) !!}</script>
-    <link rel="stylesheet" href="/assets/wojtex.css?v=0.1.0-beta.1-page-jump1">
+    <link rel="stylesheet" href="/assets/wojtex.css?v=0.1.0-beta.1-mobile-menu1">
     <link rel="stylesheet" href="/assets/custom.css?v=0.1.0-beta.1">
     <script src="/assets/wojtex-appearance.js?v=0.1.0-beta.1"></script>
     <script src="/assets/wojtex-drafts.js?v=0.1.0-beta.1-edit-drafts1" defer></script>
-    <script src="/assets/forum.js?v=0.1.0-beta.1-page-jump1" defer></script>
+    <script src="/assets/forum.js?v=0.1.0-beta.1-mobile-menu1" defer></script>
 </head>
 <body>
     <a class="skip-link" href="#main-content" data-i18n="ui.nav.skip">{{ __('ui.nav.skip') }}</a>
@@ -25,6 +25,7 @@
             <span class="brand-mark"><svg viewBox="0 0 40 40" aria-hidden="true"><path d="M3 13 6 27 10 18 14 27 17 13M22 13 33 27M33 13 22 27" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
             <span class="brand-copy"><strong>Wojte<span>X</span></strong><small>FORUM <span>by Swir</span></small></span>
         </a>
+        <button class="icon-button wx-sidebar-close" type="button" data-action="close-menu" aria-label="{{ __('ui.nav.menu_close') }}" data-i18n-aria-label="ui.nav.menu_close"><span data-icon="close"></span></button>
         <div class="workspace-label"><span data-i18n="ui.nav.community">{{ __('ui.nav.community') }}</span></div>
         <nav class="main-nav" id="main-nav">
             <a href="#/" class="nav-item active" data-nav="home"><span data-icon="layout"></span><span data-i18n="ui.nav.discover">{{ __('ui.nav.discover') }}</span><span class="nav-dot"></span></a>
