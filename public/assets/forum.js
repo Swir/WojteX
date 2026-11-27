@@ -706,6 +706,60 @@ function trackThreadReads(detail) {
 
 function postCard(p,number){const canEdit=state.user&&(state.user.id===p.author?.id||isMod())&&(!state.thread?.thread?.is_locked||isMod())&&(state.thread?.can_reply!==false||isMod());return `<article class="panel post-card" id="post-${Number(p.id)}"><div class="post-top">${avatar(p.author)}<div class="post-author"><strong>${e(p.author?.name||tr('ui.user.fallback'))}</strong>${role(p.author)}<small><time title="${e(dateTitle(p.created_at))}">${e(relative(p.created_at))}</time>${e(p.updated_at&&p.updated_at!==p.created_at?tr('ui.common.edited_suffix'):'')}</small></div><span class="post-number">#${number}</span></div><div class="post-body">${p.body_html||e(p.body).replace(/\n/g,'<br>')}</div>${p.attachments?.length?`<div class="attachments">${p.attachments.map(a=>`<a class="attachment" href="/attachments/${Number(a.id)}" target="_blank" rel="noopener noreferrer">${icon('paperclip')}${e(a.name||a.original_name||tr('ui.post.attachment'))}${a.size?`<span class="muted">(${formatBytes(a.size)})</span>`:''}</a>`).join('')}</div>`:''}<div class="post-actions"><div class="post-actions-group"><button type="button" class="subtle-button wx-copy-post" data-action="copy-post" data-id="${Number(p.id)}" aria-label="${tx('ui.post.copy_link_label',{number})}">${icon('link')}${tx('ui.post.copy_link')}</button><button class="reaction-button ${p.reacted?'active':''}" data-action="react" data-id="${Number(p.id)}" aria-pressed="${!!p.reacted}" ${state.thread?.can_reply===false?'disabled':state.user?.id===p.author?.id?`disabled title="${tx('ui.post.own_reaction')}"`:''}>${icon('heart')}<span>${count(p.reactions_count)}</span></button>${state.thread?.can_reply===false?'':`<button class="subtle-button" data-action="quote" data-id="${Number(p.id)}">${tx('ui.post.quote')}</button>`}</div>${canEdit?`<div class="post-actions-group"><button class="subtle-button" data-action="edit-post" data-id="${Number(p.id)}">${tx('ui.common.edit')}</button><button class="subtle-button" data-action="attach-post" data-id="${Number(p.id)}">${tx('ui.post.add_file')}</button>${number!==1?`<button class="subtle-button" data-action="delete-post" data-id="${Number(p.id)}">${tx('ui.common.delete')}</button>`:''}</div>`:''}</div></article>`;}
 function formatBytes(bytes){const unit=bytes>=1024*1024?'megabyte':'kilobyte';const value=bytes>=1024*1024?bytes/1024/1024:Math.ceil(bytes/1024);return new Intl.NumberFormat(activeLocale(),{style:'unit',unit,unitDisplay:'short',maximumFractionDigits:1}).format(value);}
+const quotePointerText = new WeakMap();
+let quoteSelectionButton;
+
+function quoteableSelection() {
+    const selection = window.getSelection();
+    if (!selection || selection.isCollapsed) return null;
+    const anchor = selection.anchorNode;
+    const origin = anchor?.nodeType === Node.ELEMENT_NODE ? anchor : anchor?.parentElement;
+    const body = origin?.closest('.post-card .post-body');
+    if (!body?.contains(selection.focusNode)) return null;
+    const button = $('[data-action="quote"]', body.closest('.post-card'));
+    const text = selection.toString().trim();
+    return button && text ? {button, text} : null;
+}
+
+function escapeMarkdownText(value) {
+    return value.replace(/[\\\u0060*_{}\[\]()<>#+.!|~\-]/g, character => '\\' + character);
+}
+
+function quotePost(button, id, fromPointer) {
+    const pointerText = fromPointer ? quotePointerText.get(button) : '';
+    quotePointerText.delete(button);
+    if (!ensureAuth()) return;
+    const post = state.thread?.posts?.find(item => item.id === id);
+    if (!post) return;
+    const input = $('#reply-panel textarea');
+    if (!input) {
+        toast(tr('ui.topic.closed_error'), true);
+        return;
+    }
+
+    const selection = quoteableSelection();
+    const excerpt = pointerText || (selection?.button === button ? selection.text : '');
+    const text = excerpt ? escapeMarkdownText(excerpt) : post.body;
+    const author = post.author?.name || tr('ui.user.fallback');
+    const source = escapeMarkdownText(tr('ui.post.quote_source', {name: author}).replace(/\s+/g, ' '));
+    const url = `#/thread/${Number(state.thread.thread.id)}?post=${id}`;
+    const lines = text.replace(/\r\n?/g, '\n').split('\n').map(line => line ? `> ${line}` : '>');
+    const separator = input.value && !input.value.endsWith('\n\n') ? (input.value.endsWith('\n') ? '\n' : '\n\n') : '';
+    const quote = `${separator}> [${source}](${url})\n>\n${lines.join('\n')}\n\n`;
+    const end = input.value.length;
+    if (end + quote.length > input.maxLength) {
+        toast(tr('ui.post.quote_too_long'), true);
+        return;
+    }
+
+    setEditorPreview(input.closest('.editor'), false);
+    input.setRangeText(quote, end, end, 'end');
+    input.dispatchEvent(new Event('input', {bubbles: true}));
+    input.focus({preventScroll: true});
+    const behavior = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
+    $('#reply-panel').scrollIntoView({behavior, block: 'center'});
+}
+
 let nextEditorId = 0;
 const editorPreviews = new WeakMap();
 
@@ -1409,7 +1463,7 @@ async function refreshGroups(){state.groupData=await request('/api/admin/groups'
 async function refreshLanguages(){state.languageData=await request('/api/admin/languages');}
 async function refreshAdmin(){state.admin=await request('/api/admin');if(state.adminTab==='languages')await refreshLanguages();if(state.adminTab==='groups')await refreshGroups();if(state.adminTab==='message-reports')await refreshReports();renderAdminView();}
 
-async function handleAction(button){const a=button.dataset.action,id=Number(button.dataset.id);switch(a){
+async function handleAction(button,event){const a=button.dataset.action,id=Number(button.dataset.id);switch(a){
 case 'toggle-menu':setSidebarOpen(button.getAttribute('aria-expanded') !== 'true');break;
 case 'appearance':modal(tr('ui.appearance.title'),tr('ui.appearance.subtitle'),WojtexAppearance.render(tx),true,'sun');break;
 case 'reset-appearance':{const saved=WojtexAppearance.reset();$('#wx-appearance-status').textContent=tr(saved?'ui.appearance.saved_hint':'ui.appearance.storage_unavailable');}break;
@@ -1542,7 +1596,7 @@ case 'copy-post':
     await copyForumLink(`#/thread/${state.thread.thread.id}?post=${id}`, tr('ui.post.link_title'), tr('ui.post.link_address'), tr('ui.post.link_copied'));
     break;
 case 'react':if(ensureAuth()){const r=await request(`/api/posts/${id}/reaction`,{method:'POST'});button.classList.toggle('active',r.reacted);button.setAttribute('aria-pressed',String(r.reacted));button.innerHTML=icon('heart')+`<span>${count(r.reactions_count)}</span>`;await refreshRankings();}break;
-case 'quote':{if(!ensureAuth())break;const p=state.thread?.posts?.find(p=>p.id===id);const area=$('#reply-panel textarea');if(!area){toast(tr('ui.topic.closed_error'),true);break;}if(p){setEditorPreview(area.closest('.editor'),false);const quote=`> **${p.author?.name||tr('ui.user.fallback')}:**\n${p.body.split('\n').map(l=>'> '+l).join('\n')}\n\n`;area.value+=quote;area.dispatchEvent(new Event('input',{bubbles:true}));area.focus();$('#reply-panel').scrollIntoView({behavior:'smooth',block:'center'});}}break;
+case 'quote':quotePost(button,id,event.detail > 0);break;
 case 'focus-reply':if(ensureAuth()){const field=$('#reply-panel textarea');if(field){setEditorPreview(field.closest('.editor'),false);field.focus({preventScroll:true});field.scrollIntoView({behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth',block:'center'});}}break;
 case 'edit-post':editPostModal(id);break;
 case 'attach-post':attachmentModal(id);break;
@@ -1573,7 +1627,7 @@ case 'edit-category':categoryModal(id);break;
 case 'category-visibility':{const c=(state.admin.categories||state.bootstrap.categories).find(c=>c.id===id);const makePublic=!!c.is_private;confirmModal(makePublic?tr('ui.admin.public_title'):tr('ui.admin.private_title'),makePublic?tr('ui.admin.public_body',{name:c.name}):tr('ui.admin.private_body',{name:c.name}),makePublic?tr('ui.admin.make_public'):tr('ui.admin.make_private'),async()=>{await request(`/api/admin/categories/${id}`,{method:'PATCH',body:{is_private:!c.is_private}});closeDialog();await loadBootstrap();await refreshAdmin();toast(tr('ui.admin.visibility_saved'));},false);}break;
 }}
 
-document.addEventListener('click',async event=>{const button=event.target.closest('[data-action]');if(!button||button.disabled)return;if(button.tagName!=='A')event.preventDefault();if(button.dataset.busy==='1')return;const immediate=['toggle-menu','appearance','reset-appearance','login','register','account','close-dialog','close-on-nav','new-topic','discard-draft','overwrite-draft','quick-search','thread-post-search','thread-post-search-result','sort','page','quote','edit-post','attach-post','clear-post-attachment','delete-post','delete-thread','delete-shout','format','editor-preview','message-reply','admin-tab','ban-user','group-delete','new-category','edit-category','category-visibility'];const busy=!immediate.includes(button.dataset.action);try{if(busy){button.dataset.busy='1';button.setAttribute('aria-busy','true');button.disabled=true;}await handleAction(button);}catch(err){toast(err.message,true);if(err.status===401){state.user=null;authModal('login');}}finally{if(busy){button.dataset.busy='0';button.removeAttribute('aria-busy');button.disabled=false;}}});
+document.addEventListener('click',async event=>{const button=event.target.closest('[data-action]');if(!button||button.disabled)return;if(button.tagName!=='A')event.preventDefault();if(button.dataset.busy==='1')return;const immediate=['toggle-menu','appearance','reset-appearance','login','register','account','close-dialog','close-on-nav','new-topic','discard-draft','overwrite-draft','quick-search','thread-post-search','thread-post-search-result','sort','page','quote','edit-post','attach-post','clear-post-attachment','delete-post','delete-thread','delete-shout','format','editor-preview','message-reply','admin-tab','ban-user','group-delete','new-category','edit-category','category-visibility'];const busy=!immediate.includes(button.dataset.action);try{if(busy){button.dataset.busy='1';button.setAttribute('aria-busy','true');button.disabled=true;}await handleAction(button,event);}catch(err){toast(err.message,true);if(err.status===401){state.user=null;authModal('login');}}finally{if(busy){button.dataset.busy='0';button.removeAttribute('aria-busy');button.disabled=false;}}});
 
 async function submitForm(form){const type=form.dataset.form;const values=Object.fromEntries(new FormData(form).entries());switch(type){
 case 'thread-post-search':
@@ -1723,6 +1777,20 @@ window.addEventListener('pagehide', () => {
 });
 document.addEventListener('input', queueDraft);
 document.addEventListener('change', queueDraft);
+document.addEventListener('selectionchange', () => {
+    const button = quoteableSelection()?.button;
+    if (button === quoteSelectionButton) return;
+    if (quoteSelectionButton?.isConnected) quoteSelectionButton.textContent = tr('ui.post.quote');
+    if (button) button.textContent = tr('ui.post.quote_selection');
+    quoteSelectionButton = button;
+});
+document.addEventListener('pointerdown', event => {
+    const button = event.target.closest('[data-action="quote"]');
+    if (!button) return;
+    const selection = quoteableSelection();
+    if (selection?.button === button) quotePointerText.set(button, selection.text);
+    else quotePointerText.delete(button);
+});
 document.addEventListener('change', event => {
     if (event.target.id === 'following-category') {
         updateRouteQuery({category: event.target.value || null, page: null});
