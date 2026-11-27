@@ -280,9 +280,16 @@ class ForumService
                 // The batched SELECT includes post_id for grouping, but the
                 // public attachment payload never exposed that extra column.
                 unset($data['post_id']);
-                return $data + ['url'=>'/attachments/'.$attachment->id];
+                $url = '/attachments/'.$attachment->id;
+                if (self::canPreviewAttachment($attachment->mime ?? null)) $data['preview_url'] = $url.'/preview';
+                return $data + ['url' => $url];
             })->all(),
         ];
+    }
+
+    public static function canPreviewAttachment(?string $mime): bool
+    {
+        return in_array($mime, ['image/png', 'image/jpeg', 'image/gif', 'image/webp'], true);
     }
 
     public static function stats(?User $user): array

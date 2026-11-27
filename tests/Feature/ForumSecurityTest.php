@@ -1138,6 +1138,44 @@ class ForumSecurityTest extends TestCase
         $this->assertDenied($this->get('/attachments/'.$id, ['Accept' => 'application/json']));
     }
 
+    public function test_image_preview_requires_category_access_and_serves_only_verified_raster_images(): void
+    {
+        Storage::fake('local');
+        $owner = $this->user('admin');
+        $member = $this->user();
+        [$thread, $post] = $this->thread($owner, $this->category(true));
+        $image = base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+X2L0AAAAASUVORK5CYII=');
+        $attach = function (string $name, string $mime, string $contents) use ($owner, $post): int {
+            $path = 'attachments/'.$name;
+            Storage::disk('local')->put($path, $contents);
+
+            return DB::table('attachments')->insertGetId([
+                'post_id' => $post, 'user_id' => $owner->id, 'path' => $path,
+                'name' => $name, 'mime' => $mime, 'size' => strlen($contents),
+                'created_at' => now(), 'updated_at' => now(),
+            ]);
+        };
+        $png = $attach('sample.png', 'image/png', $image);
+        $text = $attach('sample.txt', 'text/plain', 'An ordinary text attachment.');
+        $mismatch = $attach('wrong.png', 'image/png', 'An ordinary text attachment.');
+        $url = '/attachments/'.$png;
+
+        $this->assertDenied($this->getJson($url.'/preview'));
+        $this->assertDenied($this->actingAs($member)->getJson($url.'/preview'));
+        $this->actingAs($owner)->getJson('/api/threads/'.$thread)->assertOk()
+            ->assertJsonPath('posts.0.attachments.0.preview_url', $url.'/preview')
+            ->assertJsonMissingPath('posts.0.attachments.1.preview_url');
+        $preview = $this->get($url.'/preview')->assertOk()->assertHeader('Content-Type', 'image/png')
+            ->assertHeader('X-Content-Type-Options', 'nosniff');
+        $this->assertStringStartsWith('inline', $preview->headers->get('Content-Disposition'));
+        $this->assertStringContainsString('no-store', $preview->headers->get('Cache-Control'));
+        $this->assertSame($image, $preview->streamedContent());
+        $download = $this->get($url)->assertOk()->assertHeader('Content-Type', 'application/octet-stream');
+        $this->assertStringStartsWith('attachment', $download->headers->get('Content-Disposition'));
+        $this->getJson('/attachments/'.$text.'/preview')->assertNotFound();
+        $this->getJson('/attachments/'.$mismatch.'/preview')->assertNotFound();
+    }
+
     public function test_admin_cannot_ban_self_or_another_admin(): void
     {
         $admin = $this->user('admin');

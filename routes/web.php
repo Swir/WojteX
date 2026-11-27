@@ -8,6 +8,7 @@ Route::get('/login',fn()=>redirect('/#/login'))->name('login');
 Route::middleware('installed')->group(function(){
     Route::get('/',fn()=>view('forum'));
     Route::get('/attachments/{id}',[AttachmentController::class,'download'])->whereNumber('id')->middleware('fresh_forum_reader');
+    Route::get('/attachments/{id}/preview',[AttachmentController::class,'preview'])->whereNumber('id')->middleware('fresh_forum_reader');
     Route::prefix('api')->group(function(){
         Route::get('/bootstrap',[ForumController::class,'bootstrap'])->middleware('fresh_forum_reader');
         Route::get('/forum-summary',[ForumController::class,'summary'])->middleware('fresh_forum_reader');

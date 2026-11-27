@@ -47,9 +47,31 @@ class AttachmentController extends Controller
         return response()->json(['id'=>$aid,'name'=>$name,'url'=>'/attachments/'.$aid],201);
     }
     public function download(Request $request,int $id) {
+        $a = $this->readableAttachment($request, $id);
+        return Storage::disk('local')->download($a->path,$a->name,['Content-Type'=>'application/octet-stream','X-Content-Type-Options'=>'nosniff','Cache-Control'=>'private, no-store']);
+    }
+
+    public function preview(Request $request, int $id)
+    {
+        $a = $this->readableAttachment($request, $id);
+        abort_unless(Forum::canPreviewAttachment($a->mime), 404, __('server.attachment_unavailable'));
+        $storage = Storage::disk('local');
+        $mime = (new \finfo(FILEINFO_MIME_TYPE))->file($storage->path($a->path));
+        abort_unless($mime === $a->mime, 404, __('server.attachment_unavailable'));
+
+        return $storage->response($a->path, null, [
+            'Content-Type' => $a->mime,
+            'X-Content-Type-Options' => 'nosniff',
+            'Cache-Control' => 'private, no-store',
+        ], 'inline');
+    }
+
+    private function readableAttachment(Request $request, int $id): object
+    {
         $a=DB::table('attachments')->find($id)??abort(404);$p=DB::table('posts')->find($a->post_id)??abort(404);
         Forum::thread($p->thread_id,$request->user());
         abort_unless(Storage::disk('local')->exists($a->path),404,__('server.attachment_unavailable'));
-        return Storage::disk('local')->download($a->path,$a->name,['Content-Type'=>'application/octet-stream','X-Content-Type-Options'=>'nosniff','Cache-Control'=>'private, no-store']);
+
+        return $a;
     }
 }

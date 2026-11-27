@@ -20,6 +20,7 @@ protected = {
     ('GET|HEAD', 'api/threads/{id}/posts/search'),
     ('GET|HEAD', 'api/rankings'),
     ('GET|HEAD', 'attachments/{id}'),
+    ('GET|HEAD', 'attachments/{id}/preview'),
 }
 seen = set()
 for route in routes:
