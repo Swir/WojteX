@@ -18,6 +18,8 @@ Route::middleware('installed')->group(function(){
         Route::get('/threads/{id}',[ForumController::class,'show'])->whereNumber('id')->middleware('fresh_forum_reader');
         Route::get('/threads/{id}/posts/search',[ForumController::class,'searchPosts'])->whereNumber('id')
             ->middleware(['fresh_forum_reader', 'throttle:60,1,thread-post-search']);
+        Route::get('/threads/{id}/attachments',[AttachmentController::class,'forThread'])->whereNumber('id')
+            ->middleware(['fresh_forum_reader', 'throttle:60,1,thread-attachments']);
         Route::get('/shouts',[CommunityController::class,'shouts']);
         Route::get('/rankings',[CommunityController::class,'rankings'])->middleware('fresh_forum_reader');
         Route::post('/auth/register',[AuthController::class,'register'])->middleware('throttle:register');

@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Browse and search attachments from every page of a discussion. Preview images, download a file or jump directly to its post.
+- Paste an image from the clipboard into a topic or reply editor to add it to the attachment queue.
+- Use Ctrl or Command with Enter in the post editor to publish a topic or reply or save an edit.
 - Sort topics by when they were created. Pinned topics stay at the top, and the selected order works with category and search filters.
 - Queue attachments while writing a reply. If an upload fails, retry the remaining files from the attachment dialog after the reply is published.
 - Refine forum search results by category and edit the search phrase directly on the results page.

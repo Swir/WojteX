@@ -5,7 +5,7 @@ namespace App\Services;
 use Illuminate\Database\Query\Builder;
 
 /**
- * Literal contains-search for visible forum threads and their post bodies.
+ * Literal contains-search for visible forum threads, posts and attachments.
  *
  * SQLite and MySQL both support a single-character LIKE ESCAPE expression.
  * Bind the escaped search term; never interpolate user text in SQL. The
@@ -41,6 +41,11 @@ final class ThreadSearchQuery
     public static function applyPostBody(Builder $posts, string $term): Builder
     {
         return $posts->whereRaw("posts.body LIKE ? ESCAPE '!'", [self::containsPattern($term)]);
+    }
+
+    public static function applyAttachmentName(Builder $attachments, string $term): Builder
+    {
+        return $attachments->whereRaw("attachments.name LIKE ? ESCAPE '!'", [self::containsPattern($term)]);
     }
 
     private static function containsPattern(string $term): string

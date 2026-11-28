@@ -2,6 +2,7 @@
 namespace App\Http\Controllers;
 use App\Services\ForumService as Forum;
 use App\Services\AttachmentInsertQuery;
+use App\Services\ThreadSearchQuery;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -9,6 +10,39 @@ use Illuminate\Support\Str;
 
 class AttachmentController extends Controller
 {
+    public function forThread(Request $request, int $id)
+    {
+        $data = $request->validate([
+            'q' => 'nullable|string|max:150',
+            'before' => 'nullable|integer|min:1',
+        ]);
+        $visible = Forum::visibleThreads($request->user())->where('t.id', $id);
+        abort_unless($visible->exists(), 404, __('server.thread_unavailable'));
+
+        $query = DB::table('attachments')->join('posts', 'posts.id', '=', 'attachments.post_id')
+            ->whereIn('posts.thread_id', $visible->select('t.id'));
+        if (ThreadSearchQuery::shouldSearch($data['q'] ?? null)) {
+            ThreadSearchQuery::applyAttachmentName($query, $data['q']);
+        }
+        if (isset($data['before'])) $query->where('attachments.id', '<', $data['before']);
+
+        $pageSize = 12;
+        $rows = $query->orderByDesc('attachments.id')->limit($pageSize + 1)
+            ->get(['attachments.id', 'attachments.post_id', 'attachments.name', 'attachments.mime', 'attachments.size']);
+        $page = $rows->take($pageSize);
+
+        return response()->json([
+            'data' => $page->map(static fn ($file) => [
+                'id' => (int) $file->id,
+                'post_id' => (int) $file->post_id,
+                'name' => $file->name,
+                'size' => (int) $file->size,
+                'previewable' => Forum::canPreviewAttachment($file->mime),
+            ])->values(),
+            'next_before' => $rows->count() > $pageSize ? (int) $page->last()->id : null,
+        ])->header('Cache-Control', 'private, no-store');
+    }
+
     public function upload(Request $request,int $id) {
         $p=DB::table('posts')->find($id)??abort(404);$t=Forum::thread($p->thread_id,$request->user());
         abort_unless(Forum::canReplyCategory(DB::table('categories')->find($t->category_id), $request->user()), 403, __('server.category_post_forbidden'));

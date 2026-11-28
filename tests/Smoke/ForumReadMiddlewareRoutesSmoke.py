@@ -18,6 +18,7 @@ protected = {
     ('GET|HEAD', 'api/threads/quick-search'),
     ('GET|HEAD', 'api/threads/{id}'),
     ('GET|HEAD', 'api/threads/{id}/posts/search'),
+    ('GET|HEAD', 'api/threads/{id}/attachments'),
     ('GET|HEAD', 'api/rankings'),
     ('GET|HEAD', 'attachments/{id}'),
     ('GET|HEAD', 'attachments/{id}/preview'),

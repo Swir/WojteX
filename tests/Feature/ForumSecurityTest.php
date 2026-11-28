@@ -1181,6 +1181,52 @@ class ForumSecurityTest extends TestCase
         $this->assertDatabaseCount('attachments', 0);
     }
 
+    public function test_discussion_files_search_and_paginate_only_visible_attachments(): void
+    {
+        $author = $this->user('admin');
+        $guestCategory = $this->category();
+        [$thread, $first] = $this->thread($author, $guestCategory);
+        [, $other] = $this->thread($author, $guestCategory);
+        $replies = [$first];
+        for ($index = 1; $index <= 3; $index++) {
+            $replies[] = $this->makePost($author, $thread, 'Reply '.$index);
+        }
+        $attach = static function (int $post, string $name, string $mime = 'text/plain') use ($author): int {
+            return DB::table('attachments')->insertGetId([
+                'post_id' => $post, 'user_id' => $author->id, 'name' => $name,
+                'path' => 'attachments/internal-'.$name, 'mime' => $mime, 'size' => 21,
+                'created_at' => now(), 'updated_at' => now(),
+            ]);
+        };
+        $matching = $attach($first, 'plan%_v1.png', 'image/png');
+        $attach($other, 'plan%_v1-private-to-another-thread.png', 'image/png');
+        $ordered = [$matching];
+        for ($index = 1; $index <= 12; $index++) {
+            $ordered[] = $attach($replies[intdiv($index, 4)], 'plan-A-'.$index.'.txt');
+        }
+
+        $url = '/api/threads/'.$thread.'/attachments';
+        $page = $this->getJson($url)->assertOk()->assertJsonCount(12, 'data')
+            ->assertJsonPath('next_before', $ordered[1])
+            ->assertJsonMissingPath('data.0.path')
+            ->assertJsonMissingPath('data.0.user_id');
+        $this->assertStringContainsString('no-store', $page->headers->get('Cache-Control'));
+        $this->assertSame(array_reverse(array_slice($ordered, 1)), array_column($page->json('data'), 'id'));
+
+        $attach($replies[3], 'new-after-first-page.txt');
+        $this->getJson($url.'?before='.$ordered[1])->assertOk()->assertExactJson([
+            'data' => [['id' => $matching, 'post_id' => $first, 'name' => 'plan%_v1.png', 'size' => 21, 'previewable' => true]],
+            'next_before' => null,
+        ]);
+        $this->getJson($url.'?q='.rawurlencode('%_'))->assertOk()->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id', $matching);
+        $this->getJson($url.'?before=0')->assertUnprocessable();
+
+        DB::table('categories')->where('id', $guestCategory)->update(['is_private' => true]);
+        $this->getJson($url)->assertNotFound()->assertDontSee('plan%_v1.png');
+        $this->actingAs($author)->getJson($url.'?q='.rawurlencode('%_'))->assertOk()->assertJsonCount(1, 'data');
+    }
+
     public function test_private_attachment_download_requires_category_access(): void
     {
         Storage::fake('local');

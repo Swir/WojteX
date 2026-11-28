@@ -272,7 +272,7 @@ async function navigate() {
     view.setAttribute('aria-busy', 'true');
     content.innerHTML = loading();
     if (quickSearchDialog.open) quickSearchDialog.close();
-    if (dialog.open && $('[data-form="thread-post-search"]', dialog)) closeDialog();
+    if (dialog.open && $('[data-form="thread-post-search"], [data-form="thread-attachments"]', dialog)) closeDialog();
     $('#workspace-grid').classList.toggle('chat-view', route.name === 'chat');
     try {
         if (route.name === 'following' && pendingRead) {
@@ -722,6 +722,7 @@ async function renderThread(id,token){
                 ${r.page > 1 ? `<button type="button" class="button button-secondary" data-action="page" data-page="1">${icon('arrow-left')}${tx('ui.topic.first_page')}</button>` : ''}
                 ${r.total_posts > 1 ? `<a class="button button-secondary" href="#/thread/${id}?latest=1">${icon('chevron-down')}${tx('ui.topic.latest_post')}</a>` : ''}
                 <button type="button" class="button button-secondary" data-action="thread-post-search">${icon('search')}${tx('ui.thread_search.open')}</button>
+                <button type="button" class="button button-secondary" data-action="thread-attachments">${icon('paperclip')}${tx('ui.attachment.thread_title')}</button>
                 <button type="button" class="button ${t.bookmarked ? 'button-primary' : 'button-secondary'}" data-action="bookmark" data-id="${id}" aria-pressed="${!!t.bookmarked}" aria-label="${tx('ui.topic.save')}" title="${e(bookmarkAction(t.bookmarked))}">${icon('bookmark')}<span data-bookmark-label>${t.bookmarked ? tx('ui.topic.saved') : tx('ui.topic.save')}</span></button>
                 <button type="button" class="button button-secondary wx-follow-button" data-action="follow-thread" data-id="${id}" aria-label="${tx('ui.follow.follow')}" aria-pressed="${!!r.follow}">${followButtonContent(r.follow)}</button>
                 <button class="button button-ghost" data-action="copy-thread">${icon('link')}${tx('ui.topic.copy')}</button>
@@ -908,6 +909,10 @@ function editorShortcut(key, label) {
     return `data-editor-shortcut="${key.toLowerCase()}" aria-keyshortcuts="Control+${key} Meta+${key}" title="${tx('ui.editor.shortcut_hint', {action: tr(label), key})}"`;
 }
 
+function editorSubmitShortcut(label) {
+    return `data-editor-submit aria-keyshortcuts="Control+Enter Meta+Enter" title="${tx('ui.editor.shortcut_hint', {action: tr(label), key: 'Enter'})}"`;
+}
+
 function editor(name = 'body', value = '', placeholder = tr('ui.editor.placeholder'), syntax = 'markdown') {
     const previewId = 'editor-preview-' + ++nextEditorId;
     const countId = 'editor-count-' + nextEditorId;
@@ -1023,7 +1028,7 @@ function replyForm(thread) {
             ${editor()}${draftControls()}${composerAttachments()}
             <div class="reply-bottom">
                 <small>${tx('ui.post.markdown_help')}<br>${tx('ui.post.be_helpful')}</small>
-                <button class="button button-primary" type="submit">${tx('ui.post.publish_reply')}${icon('arrow-right')}</button>
+                <button class="button button-primary" type="submit" ${editorSubmitShortcut('ui.post.publish_reply')}>${tx('ui.post.publish_reply')}${icon('arrow-right')}</button>
             </div>
         </form>
     </section>`;
@@ -1696,6 +1701,71 @@ async function loadThreadPostSearch(form, term, page = 1) {
     }
 }
 
+let threadAttachmentRequest;
+
+async function openThreadAttachments() {
+    const thread = state.thread?.thread;
+    if (!thread || dialog.open) return;
+    modal(tr('ui.attachment.thread_title'), thread.title, `<form data-form="thread-attachments" data-thread="${Number(thread.id)}">
+        <div class="wx-thread-search-controls">
+            <label class="field"><span>${tx('ui.attachment.thread_query')}</span><input type="search" name="q" maxlength="150" autocomplete="off"></label>
+            <button type="submit" class="button button-primary">${icon('search')}${tx('ui.thread_search.submit')}</button>
+        </div>
+        <p class="wx-search-status" data-thread-attachment-status role="status"></p>
+        <ul class="wx-thread-attachments" data-thread-attachment-list></ul>
+        <button type="button" class="button button-secondary wx-thread-search-more" data-action="thread-attachments-more" hidden>${tx('ui.thread_search.more')}</button>
+    </form>`, true, 'paperclip');
+    await loadThreadAttachments($('[data-form="thread-attachments"]', dialog), '');
+}
+
+async function loadThreadAttachments(form, term, before = null) {
+    threadAttachmentRequest?.abort();
+    const controller = new AbortController();
+    threadAttachmentRequest = controller;
+    const thread = Number(form.dataset.thread);
+    const list = $('[data-thread-attachment-list]', form);
+    const status = $('[data-thread-attachment-status]', form);
+    const more = $('[data-action="thread-attachments-more"]', form);
+    if (before === null) {
+        form.dataset.query = term;
+        list.replaceChildren();
+        more.hidden = true;
+    }
+    status.textContent = tr('ui.attachment.thread_loading');
+    const active = () => !controller.signal.aborted && form.isConnected && dialog.open;
+    try {
+        const query = new URLSearchParams();
+        if (term) query.set('q', term);
+        if (before !== null) query.set('before', String(before));
+        const result = await request(`/api/threads/${thread}/attachments?${query}`, {signal: controller.signal});
+        if (!active()) return;
+        const previous = list.children.length;
+        list.insertAdjacentHTML('beforeend', result.data.map(file => `<li>
+            <div class="wx-thread-attachment-links">
+                <a class="attachment" href="/attachments/${Number(file.id)}" target="_blank" rel="noopener noreferrer">${icon('download')}${e(file.name)} <span class="muted">(${e(formatBytes(file.size))})</span></a>
+                <a class="button button-small button-ghost" href="#/thread/${thread}?post=${Number(file.post_id)}" aria-label="${tx('ui.attachment.thread_source_label', {name: file.name})}" data-action="thread-attachment-post" data-id="${Number(file.post_id)}">${tx('ui.attachment.thread_source')}${icon('arrow-up-right')}</a>
+            </div>
+            ${file.previewable ? `<details data-thread-attachment-preview="${Number(file.id)}">
+                <summary>${tx('ui.attachment.preview')}</summary>
+                <div class="wx-attachment-preview">
+                    <p data-image-status role="status">${tx('ui.attachment.image_loading')}</p>
+                    <img alt="${e(file.name)}" hidden>
+                </div>
+            </details>` : ''}
+        </li>`).join(''));
+        const shown = list.children.length;
+        status.textContent = shown ? tr('ui.attachment.thread_shown', {count: count(shown)})
+            : tr(term ? 'ui.attachment.thread_no_match' : 'ui.attachment.thread_empty');
+        more.hidden = !result.next_before;
+        more.dataset.before = result.next_before || '';
+        if (before !== null) ($('a', list.children[previous] || list) || form.elements.q).focus();
+    } catch (err) {
+        if (active()) status.textContent = err.message;
+    } finally {
+        if (threadAttachmentRequest === controller) threadAttachmentRequest = null;
+    }
+}
+
 async function writeClipboardText(value) {
     try {
         if (window.isSecureContext && navigator.clipboard?.writeText) {
@@ -1785,6 +1855,9 @@ function changePasswordModal() {
 }
 
 const postAttachmentExtensions = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.pdf', '.txt', '.zip'];
+const clipboardImageExtensions = new Map([
+    ['image/png', '.png'], ['image/jpeg', '.jpg'], ['image/gif', '.gif'], ['image/webp', '.webp'],
+]);
 const maxPostAttachmentSize = 5 * 1024 * 1024;
 const maxPostAttachments = 5;
 const postAttachmentQueues = new WeakMap();
@@ -1881,10 +1954,38 @@ function validatePostAttachmentQueue(picker) {
     return false;
 }
 function composerAttachments() {
-    return `<details class="composer-attachment"><summary>${icon('paperclip')}${tx('ui.post.attachments')} · ${tx('ui.common.optional')}</summary>${postAttachmentPicker('attachment')}</details>`;
+    return `<details class="composer-attachment">
+        <summary>${icon('paperclip')}${tx('ui.post.attachments')} · ${tx('ui.common.optional')}</summary>
+        ${postAttachmentPicker('attachment')}
+        <p class="wx-paste-hint">${tx('ui.attachment.paste_hint')}</p>
+    </details>`;
 }
 
-function newTopicModal(){if(!ensureAuth())return;const categories=(state.bootstrap.categories||[]).filter(c=>c.can_create!==false);if(!categories.length){toast(tr('ui.compose.no_category'),true);return;}const selected=state.route?.name==='category'?state.route.id:state.thread?.thread?.category_id;modal(tr('ui.topic.new'),tr('ui.compose.subtitle'),`<form data-form="new-topic"><div class="form-error" role="alert"></div><label class="field"><span>${tx('ui.compose.topic_title')}</span><input name="title" placeholder="${tx('ui.compose.topic_placeholder')}" required minlength="5" maxlength="180"></label><label class="field"><span>${tx('ui.compose.space')}</span><select name="category_id" required>${categories.map(c=>`<option value="${Number(c.id)}" ${selected===c.id?'selected':''}>${e(c.name)}${e(c.is_private?tr('ui.common.private_suffix'):'')}</option>`).join('')}</select></label><div class="field"><span>${tx('ui.compose.message')}</span>${editor('body','',tr('ui.compose.body_placeholder'))}</div>${draftControls()}<p class="composer-note">${tx('ui.post.markdown_help')}</p>${composerAttachments()}<div class="form-footer"><button type="button" class="button button-ghost" data-action="close-dialog">${tx('ui.common.cancel')}</button><button type="submit" class="button button-primary">${tx('ui.compose.publish')}${icon('arrow-right')}</button></div></form>`,true);bindDraft($('[data-form="new-topic"]',dialog));}
+function newTopicModal() {
+    if (!ensureAuth()) return;
+    const categories = (state.bootstrap.categories || []).filter(category => category.can_create !== false);
+    if (!categories.length) {
+        toast(tr('ui.compose.no_category'), true);
+        return;
+    }
+    const selected = state.route?.name === 'category' ? state.route.id : state.thread?.thread?.category_id;
+    modal(tr('ui.topic.new'), tr('ui.compose.subtitle'), `<form data-form="new-topic">
+        <div class="form-error" role="alert"></div>
+        <label class="field"><span>${tx('ui.compose.topic_title')}</span><input name="title" placeholder="${tx('ui.compose.topic_placeholder')}" required minlength="5" maxlength="180"></label>
+        <label class="field"><span>${tx('ui.compose.space')}</span><select name="category_id" required>
+            ${categories.map(category => `<option value="${Number(category.id)}"${selected === category.id ? ' selected' : ''}>${e(category.name)}${e(category.is_private ? tr('ui.common.private_suffix') : '')}</option>`).join('')}
+        </select></label>
+        <div class="field"><span>${tx('ui.compose.message')}</span>${editor('body', '', tr('ui.compose.body_placeholder'))}</div>
+        ${draftControls()}
+        <p class="composer-note">${tx('ui.post.markdown_help')}</p>
+        ${composerAttachments()}
+        <div class="form-footer">
+            <button type="button" class="button button-ghost" data-action="close-dialog">${tx('ui.common.cancel')}</button>
+            <button type="submit" class="button button-primary" ${editorSubmitShortcut('ui.compose.publish')}>${tx('ui.compose.publish')}${icon('arrow-right')}</button>
+        </div>
+    </form>`, true);
+    bindDraft($('[data-form="new-topic"]', dialog));
+}
 function editPostModal(id) {
     const post = state.thread?.posts?.find(item => item.id === id);
     if (!post) return;
@@ -1899,7 +2000,7 @@ function editPostModal(id) {
         ${draftControls()}
         <div class="form-footer">
             <button class="button button-ghost" type="button" data-action="close-dialog">${tx('ui.common.close')}</button>
-            <button class="button button-primary" type="submit">${tx('ui.common.save_changes')}</button>
+            <button class="button button-primary" type="submit" ${editorSubmitShortcut('ui.common.save_changes')}>${tx('ui.common.save_changes')}</button>
         </div>
     </form>`, true);
     bindDraft($('[data-form="edit-post"]', dialog), id);
@@ -1917,7 +2018,10 @@ async function refreshEditSource(button) {
     const entry = draftForms.get(form);
     if (entry) {
         const input = form.elements.body;
-        if (input.value === entry.published) input.value = published;
+        if (input.value === entry.published) {
+            input.value = published;
+            updateEditorCounter(input);
+        }
         entry.published = published;
         entry.revision = WojtexDrafts.revisionFor(published);
     }
@@ -1998,8 +2102,12 @@ function previewAttachment(button, id) {
         <img alt="${e(name)}" hidden>
         <div class="form-footer"><a class="button button-secondary" href="/attachments/${id}">${icon('download')}${tx('ui.attachment.download')}</a></div>
     </div>`, true, 'eye');
-    const preview = $('.wx-attachment-preview', dialog);
+    loadAttachmentPreview($('.wx-attachment-preview', dialog), id);
+}
+
+function loadAttachmentPreview(preview, id) {
     const img = $('img', preview);
+    if (img.hasAttribute('src')) return;
     const status = $('[data-image-status]', preview);
     img.addEventListener('load', () => {
         status.textContent = '';
@@ -2216,7 +2324,13 @@ case 'thread-post-search':openThreadPostSearch();break;
 case 'thread-post-search-more':
     await loadThreadPostSearch(button.form, button.form.dataset.query, Number(button.dataset.page));
     break;
+case 'thread-attachments':await openThreadAttachments();break;
+case 'thread-attachments-more':
+    await loadThreadAttachments(button.form, button.form.dataset.query, Number(button.dataset.before));
+    break;
+case 'thread-attachment-post':
 case 'thread-post-search-result': {
+    if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) break;
     closeDialog();
     const post = document.getElementById(`post-${id}`);
     if (button.hash === location.hash && post) focusThreadPost(post);
@@ -2392,9 +2506,12 @@ case 'category-visibility': {
 }
 }}
 
-document.addEventListener('click',async event=>{const button=event.target.closest('[data-action]');if(!button||button.disabled)return;if(button.tagName!=='A')event.preventDefault();if(button.dataset.busy==='1')return;const immediate=['toggle-menu','close-menu','appearance','reset-appearance','login','register','account','change-password','close-dialog','close-on-nav','new-topic','discard-draft','overwrite-draft','quick-search','thread-post-search','thread-post-search-result','sort','page','quote','edit-post','attach-post','preview-attachment','remove-post-attachment','delete-post','delete-thread','delete-shout','format','editor-preview','copy-code','wrap-code','message-reply','admin-tab','ban-user','group-delete','new-category','edit-category','category-visibility'];const busy=!immediate.includes(button.dataset.action);try{if(busy){button.dataset.busy='1';button.setAttribute('aria-busy','true');button.disabled=true;}await handleAction(button,event);}catch(err){toast(err.message,true);if(err.status===401){state.user=null;setUnreadMessages(0,-Infinity);authModal('login');}}finally{if(busy){button.dataset.busy='0';button.removeAttribute('aria-busy');button.disabled=false;}}});
+document.addEventListener('click',async event=>{const button=event.target.closest('[data-action]');if(!button||button.disabled)return;if(button.tagName!=='A')event.preventDefault();if(button.dataset.busy==='1')return;const immediate=['toggle-menu','close-menu','appearance','reset-appearance','login','register','account','change-password','close-dialog','close-on-nav','new-topic','discard-draft','overwrite-draft','quick-search','thread-post-search','thread-post-search-result','thread-attachments','thread-attachment-post','sort','page','quote','edit-post','attach-post','preview-attachment','remove-post-attachment','delete-post','delete-thread','delete-shout','format','editor-preview','copy-code','wrap-code','message-reply','admin-tab','ban-user','group-delete','new-category','edit-category','category-visibility'];const busy=!immediate.includes(button.dataset.action);try{if(busy){button.dataset.busy='1';button.setAttribute('aria-busy','true');button.disabled=true;}await handleAction(button,event);}catch(err){toast(err.message,true);if(err.status===401){state.user=null;setUnreadMessages(0,-Infinity);authModal('login');}}finally{if(busy){button.dataset.busy='0';button.removeAttribute('aria-busy');button.disabled=false;}}});
 
 async function submitForm(form){const type=form.dataset.form;const values=Object.fromEntries(new FormData(form).entries());switch(type){
+case 'thread-attachments':
+    await loadThreadAttachments(form, values.q.trim());
+    break;
 case 'page-jump': {
     const page = form.elements.page;
     if (page.validity.valid) goToPage(page.valueAsNumber);
@@ -2617,8 +2734,15 @@ dialog.addEventListener('close', flushDrafts);
 dialog.addEventListener('close', () => {
     if (dialog.open) return;
     threadPostSearchRequest?.abort();
+    threadAttachmentRequest?.abort();
     $('[data-form="change-password"]', dialog)?.reset();
 });
+dialog.addEventListener('toggle', event => {
+    const details = event.target;
+    if (details.open && details.matches('[data-thread-attachment-preview]')) {
+        loadAttachmentPreview($('.wx-attachment-preview', details), Number(details.dataset.threadAttachmentPreview));
+    }
+}, true);
 document.addEventListener('invalid', event => {
     if (event.target.matches('.editor textarea[hidden]')) {
         setEditorPreview(event.target.closest('.editor'), false);
@@ -2682,12 +2806,38 @@ document.addEventListener('drop', event => {
     event.preventDefault();
     addPostAttachments($('[data-post-attachment]', zone), Array.from(files));
 });
+document.addEventListener('paste', event => {
+    if (event.defaultPrevented || !event.target.matches('.editor textarea')) return;
+    const input = event.target.form?.elements.attachment;
+    const clipboard = event.clipboardData;
+    if (!input || input.disabled || input.form.dataset.busy === '1' || !clipboard?.files.length || clipboard.getData('text/plain')) return;
+    const files = Array.from(clipboard.files).filter(file => clipboardImageExtensions.has(file.type));
+    if (!files.length) return;
+    event.preventDefault();
+    input.closest('details').open = true;
+    addPostAttachments(input, files.map(file => {
+        const extension = file.name.match(/\.[^.]+$/)?.[0].toLowerCase();
+        const expected = clipboardImageExtensions.get(file.type);
+        return extension === expected || (extension === '.jpeg' && expected === '.jpg')
+            ? file
+            : new File([file], 'image' + expected, {type: file.type});
+    }));
+});
 dialog.addEventListener('click',event=>{if(event.target===dialog){const r=dialog.getBoundingClientRect();if(event.clientX<r.left||event.clientX>r.right||event.clientY<r.top||event.clientY>r.bottom)closeDialog();}});
 document.addEventListener('keydown', event => {
     if (event.defaultPrevented || event.isComposing) return;
     if (handleSidebarKeys(event)) return;
     const key = event.key.toLowerCase();
     if (event.ctrlKey !== event.metaKey && !event.altKey && !event.shiftKey && event.target.matches('.editor textarea')) {
+        if (key === 'enter') {
+            const form = event.target.form;
+            const submit = form && $('[data-editor-submit]', form);
+            if (submit) {
+                event.preventDefault();
+                if (!event.repeat && !submit.disabled) form.requestSubmit(submit);
+                return;
+            }
+        }
         const control = $$('[data-editor-shortcut]', event.target.closest('.editor'))
             .find(button => button.dataset.editorShortcut === key && !button.disabled);
         if (control) {
