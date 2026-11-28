@@ -1,6 +1,6 @@
 # WojteX Forum
 
-**0.1.0-beta.1 · pierwsze publiczne wydanie testowe · by Swir**
+**0.1.0-beta.2 · wydanie testowe · by Swir**
 
 Samodzielnie hostowane forum z polskim i angielskim interfejsem, panelem administracji i wyborem wyglądu dla każdego odwiedzającego. Projekt rozwija wcześniejszy prototyp Veyra; nazwy niektórych wewnętrznych klas i ustawień zachowano dla zgodności.
 
@@ -19,7 +19,7 @@ Samodzielnie hostowane forum z polskim i angielskim interfejsem, panelem adminis
 
 ## Pobierz i zainstaluj
 
-Pobierz **WojteX-0.1.0-beta.1-install.zip** z [Releases](https://github.com/Swir/WojteX/releases). Ta paczka zawiera zależności PHP w `vendor/` i nie wymaga budowania JavaScript. Automatyczne archiwa GitHub „Source code” zawierają kod bez zależności — po ich pobraniu trzeba wykonać `composer install`.
+Pobierz **WojteX-0.1.0-beta.2-install.zip** z [Releases](https://github.com/Swir/WojteX/releases). Ta paczka zawiera zależności PHP w `vendor/` i nie wymaga budowania JavaScript. Automatyczne archiwa GitHub „Source code” zawierają kod bez zależności — po ich pobraniu trzeba wykonać `composer install`.
 
 - [Instalacja po polsku](docs/INSTALL_PL.md)
 - [Installation in English](docs/QUICKSTART_EN.md)
@@ -28,7 +28,8 @@ Pobierz **WojteX-0.1.0-beta.1-install.zip** z [Releases](https://github.com/Swir
 
 ## Co zawiera beta
 
-- Kategorie, tematy, odpowiedzi, edycja, reakcje, zakładki i załączniki.
+- Kategorie, tematy, odpowiedzi, reakcje, obserwowanie i zakładki.
+- Szkice, podgląd edytora, wiele załączników i wyszukiwanie plików na wszystkich stronach dyskusji.
 - Konta użytkowników, profile, administracja, moderacja, grupy i uprawnienia działów.
 - Prywatne wiadomości, preferencje odbioru, blokady i zgłoszenia.
 - Shoutbox i ranking jako włączane moduły.

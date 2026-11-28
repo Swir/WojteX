@@ -1,7 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.1.0-beta.2 — 2026-11-28
 
+- Updated Symfony Mailer to 7.4.24 for [CVE-2026-133751](https://symfony.com/cve-2026-133751) and [CVE-2026-133755](https://symfony.com/cve-2026-133755).
 - Browse and search attachments from every page of a discussion. Preview images, download a file or jump directly to its post.
 - Paste an image from the clipboard into a topic or reply editor to add it to the attachment queue.
 - Use Ctrl or Command with Enter in the post editor to publish a topic or reply or save an edit.

@@ -1,8 +1,8 @@
-# Install WojteX 0.1.0-beta.1
+# Install WojteX 0.1.0-beta.2
 
 Use a separate directory and a new, empty database. This is a testing pre-release.
 
-1. Download `WojteX-0.1.0-beta.1-install.zip` from GitHub Releases and extract the complete `wojtex-forum` directory. It includes PHP dependencies in `vendor/`. PHP itself is not bundled. GitHub's automatic source archives require `composer install --no-dev --optimize-autoloader` instead.
+1. Download `WojteX-0.1.0-beta.2-install.zip` from GitHub Releases and extract the complete `wojtex-forum` directory. The archive includes dependencies in `vendor/`. Install PHP separately. For GitHub source archives, run `composer install --no-dev --optimize-autoloader`.
 2. Use PHP 8.3+ with Argon2id and the extensions listed in README. Run `php tools/check.php` if shell access is available.
 3. Keep the application outside the web root. Set the domain's document root to the application's **`public/`** directory. Apache needs rewrite support and `.htaccess`; Nginx needs an equivalent front-controller rule for `public/index.php`.
 4. Run `php tools/prepare.php`. It generates `.env`, a random application key and a private owner code. Without shell access, the first web request performs preparation; read the code from `storage/install-token` using your hosting file manager.

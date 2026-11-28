@@ -12,7 +12,7 @@ use League\CommonMark\GithubFlavoredMarkdownConverter;
 
 class ForumService
 {
-    public const VERSION = '0.1.0-beta.1';
+    public const VERSION = '0.1.0-beta.2';
     public const COLORS = ['violet','cyan','amber','rose','green','blue'];
 
     public static function installed(): bool

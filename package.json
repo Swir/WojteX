@@ -1,7 +1,7 @@
 {
   "name": "wojtex-forum",
   "private": true,
-  "version": "0.1.0-beta.1",
+  "version": "0.1.0-beta.2",
   "description": "Optional local preview launcher. Production requires only PHP.",
   "scripts": {
     "dev": "node tools/dev-server.mjs",

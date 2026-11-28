@@ -1,10 +1,10 @@
-# Instalacja WojteX 0.1.0-beta.1
+# Instalacja WojteX 0.1.0-beta.2
 
 Wybierz pusty katalog i osobną bazę danych. Nie podłączaj instalatora do bazy działającego forum.
 
 ## Hosting
 
-1. Pobierz `WojteX-0.1.0-beta.1-install.zip` z Releases i rozpakuj cały katalog `wojtex-forum`. Zależności są dołączone; PHP nie jest dołączone.
+1. Pobierz `WojteX-0.1.0-beta.2-install.zip` z Releases i rozpakuj cały katalog `wojtex-forum`. Paczka zawiera zależności. PHP zainstaluj osobno.
 2. Ustaw PHP 8.3 lub nowsze z rozszerzeniami opisanymi w README. Jeśli masz terminal, wykonaj `php tools/check.php`.
 3. Umieść aplikację poza publicznym katalogiem hostingu i skieruj domenę na jej **`public/`**. Przykład: aplikacja `/home/konto/wojtex`, katalog domeny `/home/konto/wojtex/public`. Apache wymaga obsługi reguł `.htaccess` i `mod_rewrite`. W Nginx skonfiguruj przekazywanie nieistniejących ścieżek do `public/index.php`.
 4. Uruchom `php tools/prepare.php`. Powstają prywatna `.env`, losowy klucz aplikacji i kod instalacyjny. Bez terminala przygotowanie uruchomi się przy pierwszym wejściu; kod odczytaj menedżerem plików z `storage/install-token`. Nie publikuj kodu ani pliku `.env`.
