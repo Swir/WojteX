@@ -101,10 +101,10 @@
 .wx-composer .editor-toolbar small,.wx-thread-page .editor-toolbar small{font-size:10px}
 .wx-composer .form-footer{position:sticky;bottom:0;background:var(--panel);padding:16px 0;border-top:1px solid var(--line-strong);margin-top:20px;z-index:1;gap:12px}
 .wx-composer .form-footer .button{font-size:14px;min-height:44px;white-space:normal}
-.wx-composer .composer-attachment{border:1px dashed var(--line-strong);border-radius:10px;padding:14px 16px;margin-top:18px}
+.composer-attachment{border:1px dashed var(--line-strong);border-radius:10px;padding:14px 16px;margin-top:18px}
 .composer-attachment summary{cursor:pointer;color:var(--muted);font-size:13px;line-height:1.5;display:flex;align-items:center;gap:6px;list-style:none}
 .composer-attachment summary .icon{width:16px;height:16px;vertical-align:middle;margin-right:6px}
-.wx-composer .composer-attachment .field{margin:12px 0 0}
+.composer-attachment .field{margin:12px 0 0}
 .wx-attachment-picker .field { margin-bottom: 0; }
 .field .wx-attachment-drop-hint { display: none; }
 @media (any-hover: hover) and (any-pointer: fine) {
@@ -330,6 +330,8 @@
 .wx-draft-bar .text-button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .wx-copy-post .icon { width: 16px; height: 16px; }
 .editor textarea[hidden], .wx-editor-preview[hidden] { display: none; }
+.wx-editor-count { margin: 0; padding: 0 14px 8px; color: var(--muted); font-size: 11px; text-align: end; }
+.wx-editor-count[data-near-limit] { color: var(--red); }
 .editor-toolbar button.wx-editor-preview-toggle {
     display: inline-flex;
     align-items: center;

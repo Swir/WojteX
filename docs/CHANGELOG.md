@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Queue attachments while writing a reply. If an upload fails, retry the remaining files from the attachment dialog after the reply is published.
+- Refine forum search results by category and edit the search phrase directly on the results page.
+- See the character count while writing, editing or restoring a post draft. The Markdown toolbar formats multiple selected lines as a list or quote.
+- Jump to the beginning of a discussion from any later page.
 - Queue several files for a new topic or an existing post. Remove individual files, see upload progress and retry files left in the queue if sending is interrupted.
 - Change your password from your account settings. The current session stays signed in, and other sessions and earlier recovery links are invalidated.
 - Find categories in the admin panel by name, description, slug or parent path. The visibility filter includes restrictions inherited from parent categories, and both filters stay active after saving changes.

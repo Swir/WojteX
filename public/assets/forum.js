@@ -252,7 +252,7 @@ async function navigate() {
     const followingFocus = route.name === 'following' && focused?.closest('.wx-follow-filters')
         ? (focused.id ? '#' + focused.id : '.wx-follow-filters nav [aria-current="page"]')
         : null;
-    const savedFocus = route.name === 'saved' && focused?.closest('.wx-feed-filters, .wx-saved-sort')
+    const feedFilterFocus = ['saved', 'search'].includes(route.name) && focused?.closest('.wx-feed-filters, .wx-saved-sort')
         ? (focused.id ? '#' + focused.id : '.wx-saved-sort [aria-pressed="true"]')
         : null;
     const mailboxNav = route.name === 'messages' ? focused?.closest('.wx-mailbox-nav, .private-message-pager') : null;
@@ -311,7 +311,7 @@ async function navigate() {
             startVisibleSidebar();
             void refreshUnreadMessages();
             if (followingFocus) $(followingFocus, view)?.focus({preventScroll: true});
-            if (savedFocus) ($(savedFocus, view) || $('#saved-query', view))?.focus({preventScroll: true});
+            if (feedFilterFocus) ($(feedFilterFocus, view) || $(`#${route.name}-query`, view))?.focus({preventScroll: true});
             if (mailboxSearchFocused) $('#mailbox-query', view)?.focus({preventScroll: true});
             if (mailboxNav) {
                 const activeFolder = $('.wx-mailbox-nav [aria-current="page"]', view);
@@ -561,7 +561,8 @@ function followingFilters(categories, categoryId, unread, term) {
 }
 
 function feedFilters(collection, categories, categoryId, term) {
-    const searchLabel = tx(collection === 'following' ? 'ui.follow.search' : 'ui.feed.saved_search');
+    const labels = {following: 'ui.follow.search', saved: 'ui.feed.saved_search', search: 'ui.feed.search_query'};
+    const searchLabel = tx(labels[collection]);
     return `<form class="wx-feed-filters" data-form="${collection}-filters" role="search" aria-label="${searchLabel}">
         <label class="field" for="${collection}-query">
             <span>${searchLabel}</span>
@@ -585,15 +586,17 @@ async function renderFeed(route, token) {
     const term = route.query.get('q') || '';
     const following = route.name === 'following';
     const saved = route.name === 'saved';
-    const filterTerm = saved || following ? Array.from(term.trim()).slice(0, 150).join('') : '';
+    const search = route.name === 'search';
+    const hasFilters = saved || following || search;
+    const filterTerm = hasFilters ? Array.from(term.trim()).slice(0, 150).join('') : '';
     const unread = following && route.query.get('unread') === '1';
     const categoryParam = Number(route.query.get('category'));
-    const filterCategory = (following || saved) && Number.isSafeInteger(categoryParam) && categoryParam > 0 ? categoryParam : null;
+    const filterCategory = hasFilters && Number.isSafeInteger(categoryParam) && categoryParam > 0 ? categoryParam : null;
     const headings = {
         home: [state.bootstrap.settings?.site_name || 'WojteX Forum', state.bootstrap.settings?.tagline || tr('ui.feed.home_subtitle')],
         latest: [tr('ui.feed.latest_title'), tr('ui.feed.latest_subtitle')],
         category: [category?.name || tr('ui.feed.category_title'), category?.description || tr('ui.feed.category_subtitle')],
-        search: [tr('ui.feed.search_title'), tr('ui.feed.search_subtitle', {query: term})],
+        search: [tr('ui.feed.search_title'), filterTerm ? tr('ui.feed.search_subtitle', {query: filterTerm}) : ''],
         saved: [tr('ui.feed.saved_title'), tr('ui.feed.saved_subtitle')],
         following: [tr('ui.follow.title'), tr('ui.follow.subtitle')]
     };
@@ -609,14 +612,14 @@ async function renderFeed(route, token) {
 
     const query = new URLSearchParams({sort: state.sort, page: String(state.page)});
     if (route.name === 'category') query.set('category', String(route.id));
-    if (route.name === 'search' || filterTerm) query.set('q', route.name === 'search' ? term : filterTerm);
+    if (filterTerm) query.set('q', filterTerm);
     if (saved) query.set('bookmarked', '1');
     if (following) query.set('following', '1');
     if (filterCategory) query.set('category', String(filterCategory));
     if (unread) query.set('unread', '1');
     const results = await request('/api/threads?' + query);
     if (token !== state.viewToken) return;
-    if ((following || saved) && results.current_page > results.last_page) {
+    if (hasFilters && results.current_page > results.last_page) {
         $('#main-content').focus({preventScroll: true});
         updateRouteQuery({page: results.last_page > 1 ? results.last_page : null});
         return;
@@ -628,7 +631,7 @@ async function renderFeed(route, token) {
         following: tr('ui.follow.list_title')
     };
     const noResults = {
-        search: [tr('ui.feed.search_empty'), tr('ui.feed.search_empty_help'), 'search', `<button class="button button-secondary" data-action="quick-search">${tx('ui.quick_search.open')}</button>`],
+        search: [tr('ui.feed.search_empty'), tr(filterCategory ? 'ui.feed.search_category_empty_help' : 'ui.feed.search_empty_help'), 'search'],
         saved: filterTerm || filterCategory
             ? [tr('ui.feed.saved_filter_empty'), tr('ui.feed.saved_filter_empty_help'), 'search']
             : [tr('ui.feed.collection_empty'), tr('ui.feed.collection_empty_help'), 'bookmark'],
@@ -659,7 +662,7 @@ async function renderFeed(route, token) {
         ${['home', 'category'].includes(route.name) ? feedCategories(route) : ''}
         <section class="panel threads-panel" id="forum-list" aria-labelledby="discussion-heading">
             <div class="discussion-toolbar"><h2 id="discussion-heading">${e(headingsByFeed[route.name] || tr('ui.feed.discussions_title'))}</h2><small>${e(counted(results.total, 'topics'))}</small></div>
-            ${saved ? feedFilters('saved', categories, filterCategory, filterTerm) : ''}
+            ${saved || search ? feedFilters(route.name, categories, filterCategory, filterTerm) : ''}
             ${controls}
             <div>${results.data?.length ? results.data.map(topicRow).join('') : empty(...(noResults[route.name] || firstTopic))}</div>
             ${pagination(results.current_page || 1, results.last_page || 1, results.total || 0)}
@@ -713,6 +716,7 @@ async function renderThread(id,token){
             <div class="topic-meta">${avatar(t.author,'small')}<span class="author-name">${e(t.author?.name||tr('ui.user.fallback'))}</span><span class="meta-dot">·</span><time title="${e(dateTitle(t.created_at))}">${e(relative(t.created_at))}</time><span class="meta-dot">·</span><span>${e(counted(t.views,'views'))}</span></div>
             <div class="thread-head-actions">
                 ${canReply?`<button class="button button-primary" data-action="focus-reply">${icon('message')}${tx('ui.topic.reply')}</button>`:''}
+                ${r.page > 1 ? `<button type="button" class="button button-secondary" data-action="page" data-page="1">${icon('arrow-left')}${tx('ui.topic.first_page')}</button>` : ''}
                 ${r.total_posts > 1 ? `<a class="button button-secondary" href="#/thread/${id}?latest=1">${icon('chevron-down')}${tx('ui.topic.latest_post')}</a>` : ''}
                 <button type="button" class="button button-secondary" data-action="thread-post-search">${icon('search')}${tx('ui.thread_search.open')}</button>
                 <button type="button" class="button ${t.bookmarked ? 'button-primary' : 'button-secondary'}" data-action="bookmark" data-id="${id}" aria-pressed="${!!t.bookmarked}" aria-label="${tx('ui.topic.save')}" title="${e(bookmarkAction(t.bookmarked))}">${icon('bookmark')}<span data-bookmark-label>${t.bookmarked ? tx('ui.topic.saved') : tx('ui.topic.save')}</span></button>
@@ -894,6 +898,7 @@ function quotePost(button, id, fromPointer) {
 }
 
 let nextEditorId = 0;
+const editorBodyLimit = 50000;
 const editorPreviews = new WeakMap();
 
 function editorShortcut(key, label) {
@@ -902,6 +907,8 @@ function editorShortcut(key, label) {
 
 function editor(name = 'body', value = '', placeholder = tr('ui.editor.placeholder'), syntax = 'markdown') {
     const previewId = 'editor-preview-' + ++nextEditorId;
+    const countId = 'editor-count-' + nextEditorId;
+    const body = value.replace(/\r\n?/g, '\n');
     const format = syntax === 'bbcode' ? 'bbcode' : 'markdown';
     return `<div class="editor" data-syntax="${format}">
         <div class="editor-toolbar">
@@ -916,12 +923,25 @@ function editor(name = 'body', value = '', placeholder = tr('ui.editor.placehold
                 ${icon('eye')}<span>${tx('ui.editor.preview')}</span>
             </button>
         </div>
-        <textarea name="${e(name)}" placeholder="${e(placeholder)}" required maxlength="50000" aria-label="${tx('ui.editor.body_label')}">${e(value)}</textarea>
+        <textarea name="${e(name)}" placeholder="${e(placeholder)}" required maxlength="${editorBodyLimit}" aria-label="${tx('ui.editor.body_label')}" aria-describedby="${countId}">
+${e(body)}</textarea>
+        <p class="wx-editor-count" id="${countId}"${editorBodyLimit - body.length <= 1000 ? ' data-near-limit' : ''}>${e(editorCount(body.length))}</p>
         <div class="wx-editor-preview" id="${previewId}" data-editor-preview hidden>
             <p class="wx-editor-preview-status" data-preview-status role="status"></p>
             <div class="post-body" data-preview-content></div>
         </div>
     </div>`;
+}
+
+function editorCount(length) {
+    return tr('ui.editor.characters', {used: count(length), limit: count(editorBodyLimit)});
+}
+
+function updateEditorCounter(area) {
+    const counter = document.getElementById(area.getAttribute('aria-describedby'));
+    const length = area.value.length;
+    counter.textContent = editorCount(length);
+    counter.toggleAttribute('data-near-limit', area.maxLength - length <= 1000);
 }
 
 function setEditorPreview(editor, open) {
@@ -982,7 +1002,29 @@ async function toggleEditorPreview(button) {
     }
 }
 
-function replyForm(t){if(state.thread?.can_reply===false&&state.user&&!isMod())return `<section class="panel reply-panel">${empty(tr('ui.groups.read_only'),tr('ui.groups.read_only_help'),'lock')}</section>`;if(t.is_locked&&!isMod())return `<section class="panel reply-panel">${empty(tr('ui.post.closed_title'),tr('ui.post.closed_help'),'lock')}</section>`;if(!state.user)return `<section class="panel reply-panel">${empty(tr('ui.post.perspective_title'),tr('ui.post.sign_in_help'),'message',`<button class="button button-primary" data-action="login">${tx('ui.post.sign_in_reply')}</button>`)}</section>`;return `<section class="panel reply-panel" id="reply-panel"><div class="reply-header">${avatar(state.user)}<div><h3>${tx('ui.post.reply_title')}</h3><small>${tx('ui.post.reply_subtitle')}</small></div></div><form data-form="reply" data-thread="${Number(t.id)}"><div class="form-error" role="alert"></div>${editor()}${draftControls()}<div class="reply-bottom"><small>${tx('ui.post.markdown_help')}<br>${tx('ui.post.be_helpful')}</small><button class="button button-primary" type="submit">${tx('ui.post.publish_reply')}${icon('arrow-right')}</button></div></form></section>`;}
+function replyForm(thread) {
+    if (state.thread?.can_reply === false && state.user && !isMod()) {
+        return `<section class="panel reply-panel">${empty(tr('ui.groups.read_only'), tr('ui.groups.read_only_help'), 'lock')}</section>`;
+    }
+    if (thread.is_locked && !isMod()) {
+        return `<section class="panel reply-panel">${empty(tr('ui.post.closed_title'), tr('ui.post.closed_help'), 'lock')}</section>`;
+    }
+    if (!state.user) {
+        const signIn = `<button class="button button-primary" data-action="login">${tx('ui.post.sign_in_reply')}</button>`;
+        return `<section class="panel reply-panel">${empty(tr('ui.post.perspective_title'), tr('ui.post.sign_in_help'), 'message', signIn)}</section>`;
+    }
+    return `<section class="panel reply-panel" id="reply-panel">
+        <div class="reply-header">${avatar(state.user)}<div><h3>${tx('ui.post.reply_title')}</h3><small>${tx('ui.post.reply_subtitle')}</small></div></div>
+        <form data-form="reply" data-thread="${Number(thread.id)}">
+            <div class="form-error" role="alert"></div>
+            ${editor()}${draftControls()}${composerAttachments()}
+            <div class="reply-bottom">
+                <small>${tx('ui.post.markdown_help')}<br>${tx('ui.post.be_helpful')}</small>
+                <button class="button button-primary" type="submit">${tx('ui.post.publish_reply')}${icon('arrow-right')}</button>
+            </div>
+        </form>
+    </section>`;
+}
 async function renderRankings(token){setHeader(tr('ui.rankings.header'),tr('ui.rankings.subtitle'),tr('ui.rankings.eyebrow'));if(!pluginEnabled('rankings')){$('#view').innerHTML=`<div class="panel">${empty(tr('ui.rankings.disabled'),tr('ui.rankings.disabled_help'),'trophy')}</div>`;return;}const r=await request('/api/rankings');if(token!==state.viewToken)return;state.rankings=r.data||[];renderSidebarRankings();$('#view').innerHTML=`<section class="panel ranking-hero"><div class="empty-icon">${icon('trophy')}</div><div><h2>${tx('ui.rankings.hero')}</h2><p>${tx('ui.rankings.explanation')}</p></div></section><section class="panel"><div class="panel-header"><h2>${tx('ui.rankings.overall')}</h2><span class="minor-label">${e(counted(state.rankings.length,'people').toUpperCase())}</span></div>${state.rankings.length?state.rankings.map((u,i)=>`<div class="full-rank-row"><span class="rank-position ${i<3?'first':''}">${String(i+1).padStart(2,'0')}</span>${avatar(u)}<div class="rank-user"><strong>${e(u.name)}${role(u)}</strong><small>${e(u.badge||tr('ui.rankings.member'))}</small></div><div class="rank-metric posts">${count(u.posts_count)}<small>${e(noun(u.posts_count,'posts'))}</small></div><div class="rank-metric score">${count(u.score)}<small>${e(noun(u.score,'points'))}</small></div></div>`).join(''):empty(tr('ui.rankings.first'),tr('ui.rankings.first_help'),'trophy')}</section>`;}
 let unreadMessagesRequest;
 let unreadMessagesCheckedAt = -Infinity;
@@ -1372,6 +1414,7 @@ function bindDraft(form, targetId = null) {
     }
 
     form.elements.body.value = draft.body;
+    updateEditorCounter(form.elements.body);
     if (form.elements.title) {
         form.elements.title.value = draft.title;
         const category = form.elements.category_id;
@@ -1430,6 +1473,7 @@ function discardDraft(form) {
     entry.raw = null;
     setEditorPreview(form.elements.body.closest('.editor'), false);
     form.elements.body.value = entry.published ?? '';
+    updateEditorCounter(form.elements.body);
     entry.baseline = entry.revision;
     if (form.elements.title) form.elements.title.value = '';
     if (form.elements.attachment) clearPostAttachments(form.elements.attachment);
@@ -1833,7 +1877,11 @@ function validatePostAttachmentQueue(picker) {
     $('[data-post-attachment]', picker).focus();
     return false;
 }
-function newTopicModal(){if(!ensureAuth())return;const categories=(state.bootstrap.categories||[]).filter(c=>c.can_create!==false);if(!categories.length){toast(tr('ui.compose.no_category'),true);return;}const selected=state.route?.name==='category'?state.route.id:state.thread?.thread?.category_id;modal(tr('ui.topic.new'),tr('ui.compose.subtitle'),`<form data-form="new-topic"><div class="form-error" role="alert"></div><label class="field"><span>${tx('ui.compose.topic_title')}</span><input name="title" placeholder="${tx('ui.compose.topic_placeholder')}" required minlength="5" maxlength="180"></label><label class="field"><span>${tx('ui.compose.space')}</span><select name="category_id" required>${categories.map(c=>`<option value="${Number(c.id)}" ${selected===c.id?'selected':''}>${e(c.name)}${e(c.is_private?tr('ui.common.private_suffix'):'')}</option>`).join('')}</select></label><div class="field"><span>${tx('ui.compose.message')}</span>${editor('body','',tr('ui.compose.body_placeholder'))}</div>${draftControls()}<p class="composer-note">${tx('ui.post.markdown_help')}</p><details class="composer-attachment"><summary>${icon('paperclip')}${tx('ui.post.attachment')} · ${tx('ui.common.optional')}</summary>${postAttachmentPicker('attachment')}</details><div class="form-footer"><button type="button" class="button button-ghost" data-action="close-dialog">${tx('ui.common.cancel')}</button><button type="submit" class="button button-primary">${tx('ui.compose.publish')}${icon('arrow-right')}</button></div></form>`,true);bindDraft($('[data-form="new-topic"]',dialog));}
+function composerAttachments() {
+    return `<details class="composer-attachment"><summary>${icon('paperclip')}${tx('ui.post.attachments')} · ${tx('ui.common.optional')}</summary>${postAttachmentPicker('attachment')}</details>`;
+}
+
+function newTopicModal(){if(!ensureAuth())return;const categories=(state.bootstrap.categories||[]).filter(c=>c.can_create!==false);if(!categories.length){toast(tr('ui.compose.no_category'),true);return;}const selected=state.route?.name==='category'?state.route.id:state.thread?.thread?.category_id;modal(tr('ui.topic.new'),tr('ui.compose.subtitle'),`<form data-form="new-topic"><div class="form-error" role="alert"></div><label class="field"><span>${tx('ui.compose.topic_title')}</span><input name="title" placeholder="${tx('ui.compose.topic_placeholder')}" required minlength="5" maxlength="180"></label><label class="field"><span>${tx('ui.compose.space')}</span><select name="category_id" required>${categories.map(c=>`<option value="${Number(c.id)}" ${selected===c.id?'selected':''}>${e(c.name)}${e(c.is_private?tr('ui.common.private_suffix'):'')}</option>`).join('')}</select></label><div class="field"><span>${tx('ui.compose.message')}</span>${editor('body','',tr('ui.compose.body_placeholder'))}</div>${draftControls()}<p class="composer-note">${tx('ui.post.markdown_help')}</p>${composerAttachments()}<div class="form-footer"><button type="button" class="button button-ghost" data-action="close-dialog">${tx('ui.common.cancel')}</button><button type="submit" class="button button-primary">${tx('ui.compose.publish')}${icon('arrow-right')}</button></div></form>`,true);bindDraft($('[data-form="new-topic"]',dialog));}
 function editPostModal(id) {
     const post = state.thread?.posts?.find(item => item.id === id);
     if (!post) return;
@@ -1896,7 +1944,7 @@ function attachmentModal(id, threadId = state.thread?.thread?.id, queue = []) {
     return form;
 }
 
-async function uploadPostAttachmentQueue(form) {
+async function uploadPostAttachmentQueue(form, refresh = true) {
     const picker = $('.wx-attachment-picker', form);
     const queue = postAttachmentQueue(picker);
     const status = $('[data-attachment-status]', picker);
@@ -1933,7 +1981,7 @@ async function uploadPostAttachmentQueue(form) {
         if (active && !queue.length) closeDialog();
         if (sent > 0) toast(summary);
         const route = routeInfo();
-        if (route.name === 'thread' && route.id === Number(form.dataset.thread) && sent > 0) await navigate();
+        if (refresh && route.name === 'thread' && route.id === Number(form.dataset.thread) && sent > 0) await navigate();
     } finally {
         form.dataset.uploading = picker.dataset.uploading = '0';
         renderPostAttachmentQueue(picker, summary);
@@ -2111,14 +2159,19 @@ const editorFormats = {
 function formatEditor(button) {
     const editor = button.closest('.editor');
     const area = $('textarea', editor);
-    const format = editorFormats[button.dataset.format];
+    const action = button.dataset.format;
+    const format = editorFormats[action];
     if (!area || !format) return;
 
     const {selectionStart: start, selectionEnd: end} = area;
     const selected = area.value.slice(start, end);
     const placeholder = selected ? '' : tr(format.placeholder);
-    const [prefix, suffix] = editor.dataset.syntax === 'bbcode' ? format.bbcode : format.markdown;
-    const replacement = prefix + (selected || placeholder) + suffix;
+    const bbcode = editor.dataset.syntax === 'bbcode';
+    const [prefix, suffix] = bbcode ? format.bbcode : format.markdown;
+    let content = selected || placeholder;
+    if (!bbcode && action === 'quote') content = content.replace(/\n(?=[\s\S])/g, '\n> ');
+    if (!bbcode && action === 'list') content = content.replace(/\n(?=[^\S\n]*\S)/g, '\n- ');
+    const replacement = prefix + content + suffix;
     if (area.value.length + replacement.length - (end - start) > area.maxLength) {
         toast(tr('ui.editor.format_too_long'), true);
         return;
@@ -2127,7 +2180,7 @@ function formatEditor(button) {
     area.setRangeText(replacement, start, end, 'end');
     area.focus();
     if (!selected) area.setSelectionRange(start + prefix.length, start + prefix.length + placeholder.length);
-    else if (button.dataset.format === 'link') {
+    else if (action === 'link') {
         const urlInPrefix = prefix.indexOf(editorExampleUrl);
         const urlStart = start + (urlInPrefix >= 0 ? urlInPrefix : prefix.length + selected.length + suffix.indexOf(editorExampleUrl));
         area.setSelectionRange(urlStart, urlStart + editorExampleUrl.length);
@@ -2169,6 +2222,7 @@ case 'thread-post-search-result': {
 case 'sort':updateRouteQuery({sort:button.dataset.sort,page:null});break;
 case 'clear-following-filters':
 case 'clear-saved-filters':
+case 'clear-search-filters':
     button.form.elements.q.focus({preventScroll: true});
     updateRouteQuery({q: null, category: null, page: null});
     break;
@@ -2352,6 +2406,7 @@ case 'mailbox-search':
     break;
 case 'following-filters':
 case 'saved-filters':
+case 'search-filters':
     updateRouteQuery({q:values.q.trim() || null, category:form.elements.category?.value || null, page:null});
     break;
 case 'login':case 'register':{await request('/api/auth/'+type,{method:'POST',body:values});closeDialog();state.shouts=[];state.lastShoutId=0;await reloadData();toast(type==='register'?tr('ui.auth.registered'):tr('ui.auth.welcome_back'));}break;
@@ -2425,11 +2480,21 @@ case 'reply': {
     saveDraft(form);
     const result = await request(`/api/threads/${id}/posts`, {method: 'POST', body: {body: values.body}});
     clearPublishedDraft(form, submitted);
-    const route = routeInfo();
-    if (route.name === 'thread' && route.id === id) {
-        updateRouteQuery({page: result.page ?? state.threadPage, post: result.post.id, unread: null, latest: null});
-    }
     toast(tr('ui.post.published'));
+    const queue = [...postAttachmentQueue($('.wx-attachment-picker', form))];
+    try {
+        const route = routeInfo();
+        if (queue.length && route.name === 'thread' && route.id === id && !dialog.open) {
+            await uploadPostAttachmentQueue(attachmentModal(result.post.id, id, queue), false);
+        } else if (queue.length) {
+            toast(tr('ui.post.reply_attachments_skipped'), true);
+        }
+    } finally {
+        const route = routeInfo();
+        if (route.name === 'thread' && route.id === id) {
+            updateRouteQuery({page: result.page ?? state.threadPage, post: result.post.id, unread: null, latest: null});
+        }
+    }
     await updateStats();
     await refreshRankings();
 } break;
@@ -2533,6 +2598,7 @@ function clearMessageRecipients(form) {
     $('[data-recipient-status]', form).textContent = '';
 }
 document.addEventListener('input', event => {
+    if (event.target.matches('.editor textarea')) updateEditorCounter(event.target);
     if (event.target.matches('[data-form="private-message"] [name="recipient_query"]')) clearMessageRecipients(event.target.form);
 });
 document.addEventListener('change',event=>{if(event.target.id==='locale-picker'){changeLocale(event.target);return;}if(event.target.matches('[data-form="import"] input[name=file]')){state.importPreviewOK=false;state.importFile=event.target.files[0]||null;state.importReport=null;const result=$('#import-result');if(result)result.innerHTML='';}});
