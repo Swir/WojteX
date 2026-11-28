@@ -728,7 +728,7 @@ async function renderThread(id,token){
         }).join('')}</div>
         ${pagination(r.page||1,r.last_page||1,r.total_posts||r.posts?.length||0,'posts')}${replyForm(t)}`;
 
-    addCodeCopyControls($('#view'));
+    addCodeControls($('#view'));
     const reply = $('#reply-panel form[data-form="reply"]');
     if (reply) bindDraft(reply, id);
 
@@ -962,7 +962,7 @@ async function toggleEditorPreview(button) {
         if (typeof html !== 'string') throw new Error('Invalid preview response');
         if (!editor.isConnected || editorPreviews.get(editor) !== controller) return;
         output.innerHTML = html;
-        addCodeCopyControls(output);
+        addCodeControls(output);
         for (const link of $$('a[href]', output)) {
             link.target = '_blank';
             link.rel = 'noopener noreferrer';
@@ -1558,22 +1558,18 @@ async function writeClipboardText(value) {
     return false;
 }
 
-function addCodeCopyControls(root) {
+let nextCodeBlockId = 0;
+function addCodeControls(root) {
     for (const pre of $$('.post-body pre', root)) {
         if (!pre.textContent || pre.parentElement.classList.contains('wx-code-block')) continue;
+        if (!pre.id) pre.id = `wx-code-${++nextCodeBlockId}`;
         const wrapper = document.createElement('div');
         wrapper.className = 'wx-code-block';
         const toolbar = document.createElement('div');
         toolbar.className = 'wx-code-toolbar';
-        const status = document.createElement('span');
-        status.className = 'wx-code-copy-status';
-        status.setAttribute('role', 'status');
-        const button = document.createElement('button');
-        button.type = 'button';
-        button.className = 'button button-ghost wx-copy-code';
-        button.dataset.action = 'copy-code';
-        button.textContent = tr('ui.post.copy_code');
-        toolbar.append(status, button);
+        toolbar.innerHTML = `<span class="wx-code-copy-status" role="status"></span>
+            <button type="button" class="button button-ghost" data-action="wrap-code" aria-controls="${e(pre.id)}" aria-pressed="false">${tx('ui.post.wrap_code')}</button>
+            <button type="button" class="button button-ghost wx-copy-code" data-action="copy-code">${tx('ui.post.copy_code')}</button>`;
         pre.before(wrapper);
         wrapper.append(toolbar, pre);
     }
@@ -2009,6 +2005,11 @@ case 'copy-post':
     await copyForumLink(`#/thread/${state.thread.thread.id}?post=${id}`, tr('ui.post.link_title'), tr('ui.post.link_address'), tr('ui.post.link_copied'));
     break;
 case 'copy-code':await copyCodeBlock(button);break;
+case 'wrap-code': {
+    const pre = $('pre', button.closest('.wx-code-block'));
+    button.setAttribute('aria-pressed', String(pre.classList.toggle('wx-code-wrapped')));
+    break;
+}
 case 'react':if(ensureAuth()){const r=await request(`/api/posts/${id}/reaction`,{method:'POST'});button.classList.toggle('active',r.reacted);button.setAttribute('aria-pressed',String(r.reacted));button.innerHTML=icon('heart')+`<span>${count(r.reactions_count)}</span>`;await refreshRankings();}break;
 case 'quote':quotePost(button,id,event.detail > 0);break;
 case 'focus-reply':if(ensureAuth()){const field=$('#reply-panel textarea');if(field){setEditorPreview(field.closest('.editor'),false);field.focus({preventScroll:true});field.scrollIntoView({behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth',block:'center'});}}break;
@@ -2043,7 +2044,7 @@ case 'edit-category':categoryModal(id);break;
 case 'category-visibility':{const c=(state.admin.categories||state.bootstrap.categories).find(c=>c.id===id);const makePublic=!!c.is_private;confirmModal(makePublic?tr('ui.admin.public_title'):tr('ui.admin.private_title'),makePublic?tr('ui.admin.public_body',{name:c.name}):tr('ui.admin.private_body',{name:c.name}),makePublic?tr('ui.admin.make_public'):tr('ui.admin.make_private'),async()=>{await request(`/api/admin/categories/${id}`,{method:'PATCH',body:{is_private:!c.is_private}});closeDialog();await loadBootstrap();await refreshAdmin();toast(tr('ui.admin.visibility_saved'));},false);}break;
 }}
 
-document.addEventListener('click',async event=>{const button=event.target.closest('[data-action]');if(!button||button.disabled)return;if(button.tagName!=='A')event.preventDefault();if(button.dataset.busy==='1')return;const immediate=['toggle-menu','close-menu','appearance','reset-appearance','login','register','account','close-dialog','close-on-nav','new-topic','discard-draft','overwrite-draft','quick-search','thread-post-search','thread-post-search-result','sort','page','quote','edit-post','attach-post','preview-attachment','clear-post-attachment','delete-post','delete-thread','delete-shout','format','editor-preview','copy-code','message-reply','admin-tab','ban-user','group-delete','new-category','edit-category','category-visibility'];const busy=!immediate.includes(button.dataset.action);try{if(busy){button.dataset.busy='1';button.setAttribute('aria-busy','true');button.disabled=true;}await handleAction(button,event);}catch(err){toast(err.message,true);if(err.status===401){state.user=null;setUnreadMessages(0,-Infinity);authModal('login');}}finally{if(busy){button.dataset.busy='0';button.removeAttribute('aria-busy');button.disabled=false;}}});
+document.addEventListener('click',async event=>{const button=event.target.closest('[data-action]');if(!button||button.disabled)return;if(button.tagName!=='A')event.preventDefault();if(button.dataset.busy==='1')return;const immediate=['toggle-menu','close-menu','appearance','reset-appearance','login','register','account','close-dialog','close-on-nav','new-topic','discard-draft','overwrite-draft','quick-search','thread-post-search','thread-post-search-result','sort','page','quote','edit-post','attach-post','preview-attachment','clear-post-attachment','delete-post','delete-thread','delete-shout','format','editor-preview','copy-code','wrap-code','message-reply','admin-tab','ban-user','group-delete','new-category','edit-category','category-visibility'];const busy=!immediate.includes(button.dataset.action);try{if(busy){button.dataset.busy='1';button.setAttribute('aria-busy','true');button.disabled=true;}await handleAction(button,event);}catch(err){toast(err.message,true);if(err.status===401){state.user=null;setUnreadMessages(0,-Infinity);authModal('login');}}finally{if(busy){button.dataset.busy='0';button.removeAttribute('aria-busy');button.disabled=false;}}});
 
 async function submitForm(form){const type=form.dataset.form;const values=Object.fromEntries(new FormData(form).entries());switch(type){
 case 'page-jump': {

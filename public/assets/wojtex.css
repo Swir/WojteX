@@ -62,11 +62,13 @@
 .wx-thread-page .post-body pre{max-width:100%;white-space:pre;overflow:auto}
 .wx-thread-page .post-body table{display:block;max-width:100%;overflow:auto}
 .wx-code-block { min-width: 0; margin-block: 12px; }
-.wx-code-toolbar { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
+.wx-code-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; }
 .wx-code-copy-status { flex: 1; min-width: 0; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
-.wx-code-toolbar .button { min-height: 44px; }
+.wx-code-toolbar .button { min-height: 44px; white-space: normal; }
+.wx-code-toolbar .button[aria-pressed="true"] { color: var(--accent); background: var(--accent-soft); }
 .wx-code-toolbar .button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .post-body .wx-code-block pre { margin: 0; max-width: 100%; }
+.post-body .wx-code-block pre.wx-code-wrapped { white-space: pre-wrap; overflow-wrap: anywhere; }
 .wx-thread-page .post-actions{margin-top:24px;gap:12px;flex-wrap:wrap}
 .wx-thread-page .post-actions-group{flex-wrap:wrap}
 .wx-thread-page .post-actions .subtle-button{font-size:13px;min-height:40px;padding:8px 10px}
