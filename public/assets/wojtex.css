@@ -247,6 +247,9 @@
 .wx-category-copy p { margin: 0 0 6px; color: var(--muted); }
 .wx-category-copy small { color: var(--muted); }
 .wx-category-meta { margin-top: auto; color: var(--muted); font-size: 12px; }
+.wx-admin-category .plugin-copy { min-width: 0; overflow-wrap: anywhere; }
+.wx-admin-category .wx-admin-category-path { margin: 0 0 5px; font-size: 12px; }
+[data-form="category"] select[name="parent_id"] { font-size: 16px; }
 :root[data-density=compact] .wx-category-card { gap: 9px; padding-block: 12px; }
 .wx-home .topic-title { font-size: 16px; }
 .wx-home .topic-meta { font-size: 12px; }

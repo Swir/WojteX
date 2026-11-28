@@ -438,18 +438,22 @@ function renderDirectory(route) {
 }
 function categoryTag(category){return category?`<a class="tag" href="#/category/${Number(category.id)}" style="--tone:${tone(category.color)}">${e(category.name)}</a>`:'';}
 
-function categoryBreadcrumbs(category, inThread = false) {
-    const categories = new Map((state.bootstrap.categories || []).map(item => [item.id, item]));
+function categoryPath(category, categoriesById) {
     const path = [];
     const seen = new Set();
-    for (let current = category; current && !seen.has(current.id); current = categories.get(current.parent_id)) {
+    for (let current = category; current && !seen.has(current.id); current = categoriesById.get(current.parent_id)) {
         seen.add(current.id);
-        path.push({name: current.name, href: `#/category/${Number(current.id)}`});
+        path.push(current);
     }
+    return path.reverse();
+}
+
+function categoryBreadcrumbs(category, inThread = false) {
+    const categoriesById = new Map((state.bootstrap.categories || []).map(item => [item.id, item]));
     const items = [
         {name: tr('ui.common.forum'), href: '#/'},
         {name: tr('ui.directory.title'), href: '#/categories'},
-        ...path.reverse(),
+        ...categoryPath(category, categoriesById).map(item => ({name: item.name, href: `#/category/${Number(item.id)}`})),
     ];
     if (inThread) items.push({name: tr('ui.topic.topic')});
     return `<nav class="breadcrumb" aria-label="${tx('ui.directory.breadcrumb')}"><ol>${items.map((item, index) => `<li>
@@ -1161,7 +1165,32 @@ async function renderAdmin(token){setHeader(tr('ui.admin.title'),tr('ui.admin.su
 function adminTabButton(id,label,ico){return `<button class="admin-tab ${state.adminTab===id?'active':''}" data-action="admin-tab" data-tab="${id}" role="tab" aria-selected="${state.adminTab===id}">${icon(ico)}${e(label)}</button>`;}
 function renderAdminView(){if(!state.admin)return;$('#view').innerHTML=`<div class="admin-tabs" role="tablist" aria-label="${tx('ui.nav.admin')}">${adminTabButton('settings',tr('ui.admin.settings'),'settings')}${adminTabButton('categories',tr('ui.admin.categories'),'layers')}${adminTabButton('plugins',tr('ui.admin.plugins'),'puzzle')}${adminTabButton('languages',tr('ui.languages.tab'),'globe')}${adminTabButton('users',tr('ui.admin.users'),'users')}${adminTabButton('groups',tr('ui.groups.tab'),'shield')}${adminTabButton('message-reports',tr('ui.reports.tab'),'alert')}${adminTabButton('import',tr('ui.admin.import'),'database')}</div><section class="panel admin-panel">${state.adminTab==='settings'?adminSettings():state.adminTab==='categories'?adminCategories():state.adminTab==='plugins'?adminPlugins():state.adminTab==='users'?adminUsers():state.adminTab==='languages'?adminLanguages():state.adminTab==='groups'?adminGroups():state.adminTab==='message-reports'?adminReports():adminImport()}</section>`;if(state.adminTab==='import'&&state.importReport)renderImportReport();}
 function adminSettings(){const s=state.admin.settings||state.bootstrap.settings;const stats=state.admin.stats||state.bootstrap.stats;return `<div class="admin-intro"><h2>${tx('ui.admin.settings_title')}</h2><p>${tx('ui.admin.settings_subtitle')}</p></div><div class="admin-metrics"><div class="admin-metric"><strong>${count(stats.users)}</strong><span>${e(noun(stats.users,'people'))}</span></div><div class="admin-metric"><strong>${count(stats.threads)}</strong><span>${e(noun(stats.threads,'topics'))}</span></div><div class="admin-metric"><strong>${count(stats.posts)}</strong><span>${e(noun(stats.posts,'posts'))}</span></div></div><form data-form="settings"><div class="form-error" role="alert"></div><label class="field"><span>${tx('ui.admin.site_name')}</span><input name="site_name" value="${e(s.site_name)}" required minlength="2" maxlength="80"></label><label class="field"><span>${tx('ui.admin.tagline')}</span><input name="tagline" value="${e(s.tagline)}" required maxlength="160"></label><label class="field"><span>${tx('ui.admin.welcome_title')}</span><input name="welcome_title" value="${e(s.welcome_title)}" required maxlength="180"></label><label class="field"><span>${tx('ui.admin.welcome_text')}</span><textarea name="welcome_text" required maxlength="500" style="min-height:90px">${e(s.welcome_text)}</textarea></label><div class="form-row"><label class="field"><span>${tx('ui.admin.theme')}</span><select name="theme">${['dark','midnight','light','system'].map(mode=>`<option value="${mode}" ${s.theme===mode?'selected':''}>${tx('ui.appearance.'+mode)}</option>`).join('')}</select></label><label class="field"><span>${tx('ui.admin.accent')}</span><select name="accent">${['blue','violet','cyan','green','amber','rose'].map(accent=>`<option value="${accent}" ${s.accent===accent?'selected':''}>${tx('ui.appearance.'+accent)}</option>`).join('')}</select></label></div><label class="checkbox-field"><input type="checkbox" name="registration_open" ${s.registration_open?'checked':''}><span>${tx('ui.admin.registration')}</span></label><div class="form-footer"><button class="button button-primary" type="submit">${icon('check')}${tx('ui.admin.save_settings')}</button></div></form>${state.admin.recent_actions?.length?`<h3 class="admin-section-heading">${tx('ui.admin.recent_actions')}</h3>${state.admin.recent_actions.slice(0,8).map(a=>`<div class="audit-row">${tx('ui.audit.'+a.action,{},a.action)}<time>${e(dateTitle(a.created_at))}</time></div>`).join('')}`:''}`;}
-function adminCategories(){const categories=state.admin.categories||state.bootstrap.categories||[];return `<div class="admin-intro"><h2>${tx('ui.admin.categories_title')}</h2><p>${tx('ui.admin.categories_subtitle')}</p></div><button class="button button-secondary button-small" data-action="new-category">${icon('plus')}${tx('ui.category.create')}</button>${categories.length?categories.map(c=>`<div class="plugin-card"><span class="plugin-icon" style="color:${tone(c.color)};background:color-mix(in srgb,${tone(c.color)} 12%,transparent)">${icon(c.icon)}</span><div class="plugin-copy"><h3>${e(c.name)}${c.is_private?` <span class="tag tag-private">${tx('ui.topic.private')}</span>`:''}</h3><p>${e(c.description||tr('ui.common.no_description'))}</p><small>${e(counted(c.threads_count,'topics'))}</small></div><button class="icon-button" data-action="edit-category" data-id="${Number(c.id)}" aria-label="${tx('ui.admin.edit_category',{name:c.name})}">${icon('edit')}</button><button class="switch" role="switch" aria-label="${tx('ui.admin.public_access',{name:c.name})}" aria-checked="${!c.is_private}" data-action="category-visibility" data-id="${Number(c.id)}" title="${e(c.is_private?tr('ui.admin.make_public'):tr('ui.admin.make_private'))}"></button></div>`).join(''):empty(tr('ui.admin.first_category'),tr('ui.admin.first_category_help'),'layers')}<div class="notice warning"><strong>${tx('ui.admin.import_private')}</strong><p>${tx('ui.admin.import_private_help')}</p></div>`;}
+function adminCategories() {
+    const categories = state.admin.categories || state.bootstrap.categories || [];
+    const categoriesById = new Map(categories.map(category => [category.id, category]));
+    const rows = categories.map(category => {
+        const ancestors = categoryPath(category, categoriesById).slice(0, -1);
+        const parentPath = ancestors.map(item => item.name).join(' / ');
+        const privacy = category.is_private ? tx('ui.topic.private')
+            : ancestors.some(item => item.is_private) ? tx('ui.category.parent_private') : '';
+        const color = tone(category.color);
+        return `<div class="plugin-card wx-admin-category">
+            <span class="plugin-icon" style="color:${color};background:color-mix(in srgb,${color} 12%,transparent)">${icon(category.icon)}</span>
+            <div class="plugin-copy">
+                ${parentPath ? `<small class="wx-admin-category-path">${e(parentPath)}</small>` : ''}
+                <h3>${e(category.name)}${privacy ? ` <span class="tag tag-private">${privacy}</span>` : ''}</h3>
+                <p>${e(category.description || tr('ui.common.no_description'))}</p>
+                <small>${e(counted(category.threads_count, 'topics'))}</small>
+            </div>
+            <button type="button" class="icon-button" data-action="edit-category" data-id="${Number(category.id)}" aria-label="${tx('ui.admin.edit_category', {name: category.name})}">${icon('edit')}</button>
+            <button type="button" class="switch" role="switch" aria-label="${tx('ui.admin.public_access', {name: category.name})}" aria-checked="${!category.is_private}" data-action="category-visibility" data-id="${Number(category.id)}" title="${tx(category.is_private ? 'ui.admin.make_public' : 'ui.admin.make_private')}"></button>
+        </div>`;
+    }).join('');
+    return `<div class="admin-intro"><h2>${tx('ui.admin.categories_title')}</h2><p>${tx('ui.admin.categories_subtitle')}</p></div>
+        <button type="button" class="button button-secondary button-small" data-action="new-category">${icon('plus')}${tx('ui.category.create')}</button>
+        ${rows || empty(tr('ui.admin.first_category'), tr('ui.admin.first_category_help'), 'layers')}
+        <div class="notice warning"><strong>${tx('ui.admin.import_private')}</strong><p>${tx('ui.admin.import_private_help')}</p></div>`;
+}
 function adminPlugins(){return `<div class="admin-intro"><h2>${tx('ui.admin.plugins_title')}</h2><p>${tx('ui.admin.plugins_subtitle')}</p></div>${(state.admin.plugins||[]).map(p=>{const id=p.id||p.key;return `<div class="plugin-card"><span class="plugin-icon">${icon(id==='shoutbox'?'chat':id==='rankings'?'trophy':id==='welcome'?'spark':'puzzle')}</span><div class="plugin-copy"><h3>${e(p.name)}</h3><p>${e(p.description)}</p><small>${e(p.version||'0.1.0')}${p.author?' · '+e(p.author):''}</small></div><button class="switch" role="switch" aria-checked="${!!p.enabled}" aria-label="${tx('ui.admin.module_label',{name:p.name})}" data-action="toggle-plugin" data-id="${e(id)}" data-enabled="${p.enabled?'1':'0'}"></button></div>`;}).join('')}<div class="notice"><strong>${tx('ui.admin.extensions_title')}</strong><p>${tx('ui.admin.extensions_help')}</p></div>`;}
 function adminUsers(){const users=state.adminUserMatches===null?(state.admin.users||[]):state.adminUserMatches;return `<div class="admin-intro"><h2>${tx('ui.admin.users_title')}</h2><p>${tx('ui.admin.users_subtitle')}</p></div>
 <form data-form="admin-user-search" class="form-row"><div class="form-error" role="alert"></div><label class="field"><span>${tx('ui.admin.search_users_label')}</span><input name="q" value="${e(state.adminUserTerm)}" minlength="2" maxlength="80" required placeholder="${tx('ui.admin.search_users_hint')}"></label><div class="field"><span>&nbsp;</span><button class="button button-secondary" type="submit">${icon('search')}${tx('ui.admin.search_users_button')}</button>${state.adminUserMatches!==null?`<button type="button" class="button button-small button-secondary" data-action="admin-users-reset">${tx('ui.admin.search_users_reset')}</button>`:''}</div></form>
@@ -1738,7 +1767,54 @@ function previewAttachment(button, id) {
     }, {once: true});
     img.src = `/attachments/${id}/preview`;
 }
-function categoryModal(id=null){const c=(state.admin?.categories||state.bootstrap.categories||[]).find(c=>c.id===id)||{name:'',description:'',color:'violet',icon:'code',is_private:false,parent_id:null};const optionIcons={code:tr('ui.category.icon_code'),game:tr('ui.category.icon_games'),star:tr('ui.category.icon_ideas'),rocket:tr('ui.category.icon_projects'),chat:tr('ui.category.icon_chat'),folder:tr('ui.category.icon_folder'),shield:tr('ui.category.icon_admin'),book:tr('ui.category.icon_guides'),help:tr('ui.category.icon_help'),terminal:tr('ui.category.icon_terminal')};modal(id?tr('ui.category.edit_title'):tr('ui.category.new_title'),tr('ui.category.subtitle'),`<form data-form="category" ${id?`data-id="${id}"`:''}><div class="form-error" role="alert"></div><label class="field"><span>${tx('ui.category.name')}</span><input name="name" required minlength="2" maxlength="120" value="${e(c.name)}"></label><label class="field"><span>${tx('ui.category.description')}</span><textarea name="description" maxlength="500">${e(c.description)}</textarea></label><div class="form-row"><label class="field"><span>${tx('ui.category.color')}</span><select name="color">${['violet','cyan','blue','green','amber','rose'].map(k=>`<option value="${k}" ${c.color===k?'selected':''}>${e(({violet:tr('ui.category.violet'),cyan:tr('ui.category.cyan'),blue:tr('ui.category.blue'),green:tr('ui.category.green'),amber:tr('ui.category.amber'),rose:tr('ui.category.rose'),slate:tr('ui.category.slate')})[k])}</option>`).join('')}</select></label><label class="field"><span>${tx('ui.category.icon')}</span><select name="icon">${Object.entries(optionIcons).map(([k,v])=>`<option value="${k}" ${c.icon===k?'selected':''}>${e(v)}</option>`).join('')}</select></label></div><label class="checkbox-field"><input name="is_private" type="checkbox" ${c.is_private?'checked':''}><span>${tx('ui.category.private')}</span></label><div class="form-footer"><button class="button button-primary" type="submit">${icon('check')}${e(id?tr('ui.common.save_changes'):tr('ui.category.create'))}</button></div></form>`,false,'layers');}
+function categoryParentOptions(categories, id, parentId) {
+    const categoriesById = new Map(categories.map(category => [category.id, category]));
+    const parents = categories.flatMap(category => {
+        const path = categoryPath(category, categoriesById);
+        if (path[0]?.parent_id !== null || path.some(item => item.id === id)) return [];
+        const name = path.map(item => item.name).join(' / ');
+        return [{id: category.id, name: name + (path.some(item => item.is_private) ? tr('ui.common.private_suffix') : '')}];
+    });
+    const unavailable = parentId !== null && !parents.some(parent => parent.id === parentId);
+    return `<option value=""${parentId === null ? ' selected' : ''}>${tx('ui.category.parent_root')}</option>
+        ${unavailable ? `<option value="${Number(parentId)}" disabled selected>${tx('ui.category.parent_unavailable')}</option>` : ''}
+        ${parents.map(parent => `<option value="${Number(parent.id)}"${parent.id === parentId ? ' selected' : ''}>${e(parent.name)}</option>`).join('')}`;
+}
+
+function categoryModal(id = null) {
+    const categories = state.admin?.categories || state.bootstrap.categories || [];
+    const category = categories.find(item => item.id === id)
+        || {name: '', description: '', color: 'violet', icon: 'code', is_private: false, parent_id: null};
+    const optionIcons = {
+        code: tr('ui.category.icon_code'), game: tr('ui.category.icon_games'), star: tr('ui.category.icon_ideas'),
+        rocket: tr('ui.category.icon_projects'), chat: tr('ui.category.icon_chat'), folder: tr('ui.category.icon_folder'),
+        shield: tr('ui.category.icon_admin'), book: tr('ui.category.icon_guides'), help: tr('ui.category.icon_help'),
+        terminal: tr('ui.category.icon_terminal')
+    };
+    const colors = {
+        violet: tr('ui.category.violet'), cyan: tr('ui.category.cyan'), blue: tr('ui.category.blue'),
+        green: tr('ui.category.green'), amber: tr('ui.category.amber'), rose: tr('ui.category.rose')
+    };
+    modal(tr(id ? 'ui.category.edit_title' : 'ui.category.new_title'), tr('ui.category.subtitle'), `
+        <form data-form="category" ${id ? `data-id="${id}"` : ''}>
+            <div class="form-error" role="alert"></div>
+            <label class="field"><span>${tx('ui.category.name')}</span><input name="name" required minlength="2" maxlength="120" value="${e(category.name)}"></label>
+            <label class="field"><span>${tx('ui.category.description')}</span><textarea name="description" maxlength="500">${e(category.description)}</textarea></label>
+            <label class="field">
+                <span id="category-parent-label">${tx('ui.category.parent')}</span>
+                <select name="parent_id" data-original-parent="${e(category.parent_id)}" aria-labelledby="category-parent-label" aria-describedby="category-parent-help">
+                    ${categoryParentOptions(categories, id, category.parent_id)}
+                </select>
+                <small id="category-parent-help">${tx('ui.category.parent_help')}</small>
+            </label>
+            <div class="form-row">
+                <label class="field"><span>${tx('ui.category.color')}</span><select name="color">${Object.entries(colors).map(([key, label]) => `<option value="${key}"${category.color === key ? ' selected' : ''}>${e(label)}</option>`).join('')}</select></label>
+                <label class="field"><span>${tx('ui.category.icon')}</span><select name="icon">${Object.entries(optionIcons).map(([key, label]) => `<option value="${key}"${category.icon === key ? ' selected' : ''}>${e(label)}</option>`).join('')}</select></label>
+            </div>
+            <label class="checkbox-field"><input name="is_private" type="checkbox" ${category.is_private ? 'checked' : ''}><span>${tx('ui.category.private')}</span></label>
+            <div class="form-footer"><button class="button button-primary" type="submit">${icon('check')}${tx(id ? 'ui.common.save_changes' : 'ui.category.create')}</button></div>
+        </form>`, false, 'layers');
+}
 function confirmModal(title,text,buttonLabel,callback,danger=true){state.confirmAction=callback;modal(title,text,`<form data-form="confirm"><div class="form-error" role="alert"></div><div class="form-footer"><button type="button" class="button button-ghost" data-action="close-dialog">${tx('ui.common.cancel')}</button><button type="submit" class="button ${danger?'button-danger':'button-primary'}">${e(buttonLabel)}</button></div></form>`,false,danger?'alert':'info');}
 const mobileSidebar = window.matchMedia('(max-width: 740px)');
 
@@ -2131,7 +2207,20 @@ case 'edit-post': {
 case 'attachment':{const fd=new FormData();fd.append('file',$('input[name=file]',form).files[0]);await request(`/api/posts/${Number(form.dataset.id)}/attachments`,{method:'POST',body:fd});closeDialog();await navigate();toast(tr('ui.attachment.added'));}break;
 case 'profile':await request('/api/profile',{method:'PATCH',body:{name:values.name,bio:values.bio,allow_private_messages:!!$('input[name=allow_private_messages]',form)?.checked}});await loadBootstrap();renderProfile();toast(tr('ui.profile.saved'));break;
 case 'settings':{values.registration_open=!!$('input[name=registration_open]',form).checked;await request('/api/admin/settings',{method:'PATCH',body:values});await loadBootstrap();await refreshAdmin();toast(tr('ui.admin.settings_saved'));}break;
-case 'category':{values.is_private=!!$('input[name=is_private]',form).checked;const id=Number(form.dataset.id);await request('/api/admin/categories'+(id?'/'+id:''),{method:id?'PATCH':'POST',body:values});closeDialog();await loadBootstrap();await refreshAdmin();toast(id?tr('ui.admin.category_saved'):tr('ui.admin.category_created'));}break;
+case 'category': {
+    const id = Number(form.dataset.id);
+    const parent = form.elements.parent_id;
+    values.is_private = form.elements.is_private.checked;
+    if (!id || parent.value !== parent.dataset.originalParent) values.parent_id = parent.value ? Number(parent.value) : null;
+    else delete values.parent_id;
+    const result = await request('/api/admin/categories' + (id ? '/' + id : ''), {method: id ? 'PATCH' : 'POST', body: values});
+    closeDialog();
+    await loadBootstrap();
+    await refreshAdmin();
+    $(`[data-action="edit-category"][data-id="${Number(result.category.id)}"]`)?.focus();
+    toast(tr(id ? 'ui.admin.category_saved' : 'ui.admin.category_created'));
+    break;
+}
 case 'admin-user-search':{const q=(values.q||'').trim();const result=await request('/api/admin/users/search?q='+encodeURIComponent(q));state.adminUserTerm=q;state.adminUserMatches=result.data;renderAdminView();}break;
 case 'group-user-search':{const q=(values.q||'').trim();const r=await request('/api/admin/groups/users?q='+encodeURIComponent(q));state.groupUserTerm=q;state.groupUserMatches=r.data;renderAdminView();}break;
 case 'group-create':await request('/api/admin/groups',{method:'POST',body:{name:values.name}});await refreshGroups();renderAdminView();toast(tr('ui.groups.saved'));break;
