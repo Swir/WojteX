@@ -1159,7 +1159,7 @@ async function renderPrivateMessages(route, token) {
         </section>`;
 }
 
-function renderProfile(){setHeader(tr('ui.profile.title'),tr('ui.profile.subtitle'),tr('ui.profile.eyebrow'));if(!state.user){$('#view').innerHTML=`<div class="panel">${empty(tr('ui.profile.login'),tr('ui.profile.login_help'),'user',`<button class="button button-primary" data-action="login">${tx('ui.auth.sign_in')}</button>`)}</div>`;return;}const u=state.user;$('#view').innerHTML=`<section class="panel profile-card"><div class="profile-overview">${avatar(u,'xl')}<div><h2>${e(u.name)}${role(u)}</h2><p>${e(u.email||'')}</p><p>${parseDate(u.created_at)?tx('ui.profile.member_since',{date:new Intl.DateTimeFormat(activeLocale(),{month:'long',year:'numeric'}).format(parseDate(u.created_at))}):tx('ui.profile.new_member')}</p></div></div><form data-form="profile"><div class="form-error" role="alert"></div><label class="field"><span>${tx('ui.auth.display_name')}</span><input name="name" value="${e(u.name)}" required minlength="2" maxlength="50" autocomplete="nickname"></label><label class="field"><span>${tx('ui.profile.bio')}</span><textarea name="bio" maxlength="500" placeholder="${tx('ui.profile.bio_placeholder')}">${e(u.bio||'')}</textarea><small>${tx('ui.profile.bio_help')}</small></label><label class="checkbox-field"><input type="checkbox" name="allow_private_messages" ${u.allow_private_messages!==false?'checked':''}><span>${tx('ui.profile.allow_private_messages')}</span></label><p class="form-note">${tx('ui.profile.allow_private_messages_help')}</p><div class="form-footer"><button class="button button-primary" type="submit">${icon('check')}${tx('ui.profile.save')}</button></div></form></section><div class="notice">${tx('ui.profile.unavailable')}</div>`;}
+function renderProfile(){setHeader(tr('ui.profile.title'),tr('ui.profile.subtitle'),tr('ui.profile.eyebrow'));if(!state.user){$('#view').innerHTML=`<div class="panel">${empty(tr('ui.profile.login'),tr('ui.profile.login_help'),'user',`<button class="button button-primary" data-action="login">${tx('ui.auth.sign_in')}</button>`)}</div>`;return;}const u=state.user;$('#view').innerHTML=`<section class="panel profile-card"><div class="profile-overview">${avatar(u,'xl')}<div><h2>${e(u.name)}${role(u)}</h2><p>${e(u.email||'')}</p><p>${parseDate(u.created_at)?tx('ui.profile.member_since',{date:new Intl.DateTimeFormat(activeLocale(),{month:'long',year:'numeric'}).format(parseDate(u.created_at))}):tx('ui.profile.new_member')}</p></div></div><form data-form="profile"><div class="form-error" role="alert"></div><label class="field"><span>${tx('ui.auth.display_name')}</span><input name="name" value="${e(u.name)}" required minlength="2" maxlength="50" autocomplete="nickname"></label><label class="field"><span>${tx('ui.profile.bio')}</span><textarea name="bio" maxlength="500" placeholder="${tx('ui.profile.bio_placeholder')}">${e(u.bio||'')}</textarea><small>${tx('ui.profile.bio_help')}</small></label><label class="checkbox-field"><input type="checkbox" name="allow_private_messages" ${u.allow_private_messages!==false?'checked':''}><span>${tx('ui.profile.allow_private_messages')}</span></label><p class="form-note">${tx('ui.profile.allow_private_messages_help')}</p><div class="form-footer"><button type="button" class="button button-secondary" data-action="change-password">${icon('lock')}${tx('ui.auth.change_password')}</button><button class="button button-primary" type="submit">${icon('check')}${tx('ui.profile.save')}</button></div></form></section>`;}
 
 async function renderAdmin(token){setHeader(tr('ui.admin.title'),tr('ui.admin.subtitle'),tr('ui.admin.eyebrow'));if(state.user?.role!=='admin'){$('#view').innerHTML=`<div class="panel">${empty(tr('ui.admin.access'),tr('ui.admin.access_help'),'shield',!state.user?`<button class="button button-primary" data-action="login">${tx('ui.auth.sign_in')}</button>`:`<a class="button button-secondary" href="#/">${tx('ui.page.back_to_forum')}</a>`)}</div>`;return;}const data=await request('/api/admin');if(token!==state.viewToken)return;state.admin=data;if(state.adminTab==='languages')await refreshLanguages();if(state.adminTab==='groups')await refreshGroups();if(state.adminTab==='message-reports')await refreshReports();if(token!==state.viewToken)return;renderAdminView();}
 function adminTabButton(id,label,ico){return `<button class="admin-tab ${state.adminTab===id?'active':''}" data-action="admin-tab" data-tab="${id}" role="tab" aria-selected="${state.adminTab===id}">${icon(ico)}${e(label)}</button>`;}
@@ -1721,7 +1721,21 @@ function resetPasswordModal(route){
     }
     modal(tr('ui.auth.reset_title'),tr('ui.auth.reset_subtitle'),`<form data-form="reset-password"><div class="form-error" role="alert"></div><input type="hidden" name="token" value="${e(token)}"><label class="field"><span>${tx('ui.auth.email')}</span><input type="email" name="email" required autocomplete="email" maxlength="254" value="${e(email)}"></label><label class="field"><span>${tx('ui.auth.password')}</span><input type="password" name="password" required minlength="12" maxlength="128" autocomplete="new-password" placeholder="${tx('ui.auth.password_min')}"></label><label class="field"><span>${tx('ui.auth.repeat_password')}</span><input type="password" name="password_confirmation" required minlength="12" maxlength="128" autocomplete="new-password"></label><button type="submit" class="button button-primary button-wide">${tx('ui.auth.reset_submit')}${icon('arrow-right')}</button></form><div class="auth-switch"><button data-action="login">${tx('ui.auth.back_to_login')}</button></div>`,false,'lock');
 }
-function accountModal(){if(!state.user)return authModal();modal(state.user.name,tr('ui.auth.account_subtitle'),`<a class="button button-secondary button-wide" data-action="close-on-nav" href="#/profile">${icon('user')}${tx('ui.profile.edit')}</a>${state.user.role==='admin'?`<a class="button button-secondary button-wide" data-action="close-on-nav" href="#/admin" style="margin-top:10px">${icon('settings')}${tx('ui.nav.admin')}</a>`:''}<button class="button button-ghost button-wide" data-action="logout" style="margin-top:10px">${icon('logout')}${tx('ui.auth.sign_out')}</button>`,false,'user');}
+function accountModal(){if(!state.user)return authModal();modal(state.user.name,tr('ui.auth.account_subtitle'),`<a class="button button-secondary button-wide" data-action="close-on-nav" href="#/profile">${icon('user')}${tx('ui.profile.edit')}</a>${state.user.role==='admin'?`<a class="button button-secondary button-wide" data-action="close-on-nav" href="#/admin" style="margin-top:10px">${icon('settings')}${tx('ui.nav.admin')}</a>`:''}<button type="button" class="button button-secondary button-wide" data-action="change-password" style="margin-top:10px">${icon('lock')}${tx('ui.auth.change_password')}</button><button class="button button-ghost button-wide" data-action="logout" style="margin-top:10px">${icon('logout')}${tx('ui.auth.sign_out')}</button>`,false,'user');}
+
+function changePasswordModal() {
+    if (!ensureAuth()) return;
+    modal(tr('ui.auth.change_password'), tr('ui.auth.change_password_help'), `<form data-form="change-password">
+        <div class="form-error" role="alert"></div>
+        <label class="field"><span>${tx('ui.auth.current_password')}</span><input type="password" name="current_password" required maxlength="128" autocomplete="current-password"></label>
+        <label class="field"><span>${tx('ui.auth.new_password')}</span><input type="password" name="password" required minlength="12" maxlength="128" autocomplete="new-password" placeholder="${tx('ui.auth.password_min')}"></label>
+        <label class="field"><span>${tx('ui.auth.repeat_password')}</span><input type="password" name="password_confirmation" required minlength="12" maxlength="128" autocomplete="new-password"></label>
+        <div class="form-footer">
+            <button type="button" class="button button-ghost" data-action="close-dialog">${tx('ui.common.cancel')}</button>
+            <button type="submit" class="button button-primary">${icon('check')}${tx('ui.auth.reset_submit')}</button>
+        </div>
+    </form>`, false, 'lock');
+}
 
 const postAttachmentExtensions = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.pdf', '.txt', '.zip'];
 const maxPostAttachmentSize = 5 * 1024 * 1024;
@@ -2031,6 +2045,7 @@ case 'login':if(state.route?.name==='reset-password'){history.replaceState(null,
 case 'register':authModal('register');break;
 case 'forgot-password':forgotPasswordModal();break;
 case 'account':accountModal();break;
+case 'change-password':changePasswordModal();break;
 case 'close-dialog':case 'close-on-nav':closeDialog();break;
 case 'logout':await finishReadTracking();await request('/api/auth/logout',{method:'POST'});closeDialog();state.shouts=[];state.lastShoutId=0;await reloadData();toast(tr('ui.auth.signed_out'));break;
 case 'new-topic':newTopicModal();break;
@@ -2212,7 +2227,7 @@ case 'category-visibility': {
 }
 }}
 
-document.addEventListener('click',async event=>{const button=event.target.closest('[data-action]');if(!button||button.disabled)return;if(button.tagName!=='A')event.preventDefault();if(button.dataset.busy==='1')return;const immediate=['toggle-menu','close-menu','appearance','reset-appearance','login','register','account','close-dialog','close-on-nav','new-topic','discard-draft','overwrite-draft','quick-search','thread-post-search','thread-post-search-result','sort','page','quote','edit-post','attach-post','preview-attachment','clear-post-attachment','delete-post','delete-thread','delete-shout','format','editor-preview','copy-code','wrap-code','message-reply','admin-tab','ban-user','group-delete','new-category','edit-category','category-visibility'];const busy=!immediate.includes(button.dataset.action);try{if(busy){button.dataset.busy='1';button.setAttribute('aria-busy','true');button.disabled=true;}await handleAction(button,event);}catch(err){toast(err.message,true);if(err.status===401){state.user=null;setUnreadMessages(0,-Infinity);authModal('login');}}finally{if(busy){button.dataset.busy='0';button.removeAttribute('aria-busy');button.disabled=false;}}});
+document.addEventListener('click',async event=>{const button=event.target.closest('[data-action]');if(!button||button.disabled)return;if(button.tagName!=='A')event.preventDefault();if(button.dataset.busy==='1')return;const immediate=['toggle-menu','close-menu','appearance','reset-appearance','login','register','account','change-password','close-dialog','close-on-nav','new-topic','discard-draft','overwrite-draft','quick-search','thread-post-search','thread-post-search-result','sort','page','quote','edit-post','attach-post','preview-attachment','clear-post-attachment','delete-post','delete-thread','delete-shout','format','editor-preview','copy-code','wrap-code','message-reply','admin-tab','ban-user','group-delete','new-category','edit-category','category-visibility'];const busy=!immediate.includes(button.dataset.action);try{if(busy){button.dataset.busy='1';button.setAttribute('aria-busy','true');button.disabled=true;}await handleAction(button,event);}catch(err){toast(err.message,true);if(err.status===401){state.user=null;setUnreadMessages(0,-Infinity);authModal('login');}}finally{if(busy){button.dataset.busy='0';button.removeAttribute('aria-busy');button.disabled=false;}}});
 
 async function submitForm(form){const type=form.dataset.form;const values=Object.fromEntries(new FormData(form).entries());switch(type){
 case 'page-jump': {
@@ -2234,6 +2249,14 @@ case 'saved-filters':
 case 'login':case 'register':{await request('/api/auth/'+type,{method:'POST',body:values});closeDialog();state.shouts=[];state.lastShoutId=0;await reloadData();toast(type==='register'?tr('ui.auth.registered'):tr('ui.auth.welcome_back'));}break;
 case 'forgot-password':{const r=await request('/api/auth/password/forgot',{method:'POST',body:{email:values.email}});modal(tr('ui.auth.forgot_title'),tr('ui.auth.forgot_subtitle'),`<p class="form-note">${e(r.message)}</p><div class="auth-switch"><button data-action="login">${tx('ui.auth.back_to_login')}</button></div>`,false,'check-circle');}break;
 case 'reset-password':{const r=await request('/api/auth/password/reset',{method:'POST',body:values});closeDialog();history.replaceState(null,'',location.pathname+location.search+'#/login');await navigate();toast(r.message);}break;
+case 'change-password': {
+    const result = await request('/api/auth/password', {method: 'PUT', body: values});
+    state.csrf = result.csrf_token || state.csrf;
+    form.reset();
+    if (form.isConnected) closeDialog();
+    toast(result.message);
+    break;
+}
 case 'private-message-report':await request(`/api/messages/${Number(form.dataset.id)}/report`,{method:'POST',body:{reason:values.reason,details:values.details||null}});closeDialog();toast(tr('ui.reports.sent'));break;
 case 'private-message':
 case 'private-message-reply': {
@@ -2393,7 +2416,9 @@ $('#sidebar').addEventListener('click', event => {
 });
 dialog.addEventListener('close', flushDrafts);
 dialog.addEventListener('close', () => {
-    if (!dialog.open) threadPostSearchRequest?.abort();
+    if (dialog.open) return;
+    threadPostSearchRequest?.abort();
+    $('[data-form="change-password"]', dialog)?.reset();
 });
 document.addEventListener('invalid', event => {
     if (event.target.matches('.editor textarea[hidden]')) {

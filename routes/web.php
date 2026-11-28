@@ -26,6 +26,7 @@ Route::middleware('installed')->group(function(){
         Route::post('/auth/password/reset',[PasswordRecoveryController::class,'reset'])->middleware('throttle:5,1');
         Route::middleware('auth')->group(function(){
             Route::post('/auth/logout',[AuthController::class,'logout']);
+            Route::put('/auth/password',[AuthController::class,'changePassword'])->middleware('throttle:6,1,password-change');
             Route::patch('/profile',[AuthController::class,'profile']);
             Route::post('/posts/preview',[ForumController::class,'previewPost'])
                 ->middleware(['fresh_forum_reader', 'throttle:45,1,post-preview']);

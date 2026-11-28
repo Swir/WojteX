@@ -35,12 +35,17 @@ final class PasswordResetRaceState {
 final class PasswordResetStaleUser {
     public int $id = 7;
     public bool $is_banned;
-    public function __construct() { $this->is_banned = PasswordResetRaceState::$preBanned; }
+    private string $passwordHash;
+    public function __construct() {
+        $this->is_banned = PasswordResetRaceState::$preBanned;
+        $this->passwordHash = PasswordResetRaceState::$password;
+    }
     public static function where(string $key, mixed $value): PasswordResetLookup {
         if ($key !== 'email' || $value !== 'person@example.test') throw new RuntimeException('unexpected account lookup');
         return new PasswordResetLookup();
     }
     public function getKey(): int {return $this->id;}
+    public function getAuthPassword(): string {return $this->passwordHash;}
     public function forceFill(array $values): static {
         // This is the OLD unguarded Eloquent model write path. A cached
         // User::save() cannot enforce users.is_banned at UPDATE time.
@@ -72,9 +77,11 @@ final class PasswordResetFakeRequest extends Request {
 final class PasswordResetFakeBroker {
     public function reset(array $credentials, callable $callback): string {
         ++PasswordResetRaceState::$brokerCalls;
+        $user = new PasswordResetStaleUser();
         if (PasswordResetRaceState::$race === 'ban') PasswordResetRaceState::$banned = true;
         if (PasswordResetRaceState::$race === 'delete') PasswordResetRaceState::$exists = false;
-        $callback(new PasswordResetStaleUser(), $credentials['password']);
+        if (PasswordResetRaceState::$race === 'password') PasswordResetRaceState::$password = 'hash-after-change';
+        $callback($user, $credentials['password']);
         return Password::PASSWORD_RESET;
     }
 }
@@ -95,10 +102,11 @@ final class PasswordResetFakeQuery {
     public function where(string $field,mixed $value): static { $this->filters[$field] = $value; return $this; }
     public function update(array $values): int {
         ++PasswordResetRaceState::$attempts;
-        if ($this->filters !== ['id'=>7, 'is_banned'=>false])
-            throw new RuntimeException('reset UPDATE lacks authoritative id and live ban predicates: '.json_encode($this->filters));
+        if ($this->filters !== ['id'=>7, 'is_banned'=>false, 'password'=>'hash-before'])
+            throw new RuntimeException('reset UPDATE lacks authoritative id, live ban or password predicates');
         PasswordResetRaceState::$filters = $this->filters;
-        if (!PasswordResetRaceState::$exists || PasswordResetRaceState::$banned) return 0;
+        if (!PasswordResetRaceState::$exists || PasswordResetRaceState::$banned
+            || PasswordResetRaceState::$password !== $this->filters['password']) return 0;
         if (array_keys($values) !== ['password','legacy_password_hash','legacy_password_salt','remember_token','updated_at'])
             throw new RuntimeException('unexpected reset UPDATE fields');
         if (!password_verify('ReplacementPassword2026!', $values['password']) ||
@@ -133,6 +141,7 @@ $controller = new PasswordRecoveryController(); $checks = 0;
 foreach ([
     ['ban between preflight and token callback', false, 'ban', 422, 0, 1],
     ['deletion between preflight and token callback', false, 'delete', 422, 0, 1],
+    ['password changed after token verification', false, 'password', 422, 0, 1],
     ['already banned on first read', true, '', 422, 0, 0],
     ['active user token succeeds', false, '', 200, 1, 1],
 ] as [$label,$preBanned,$race,$expectedStatus,$expectedWrites,$expectedBrokerCalls]) {
@@ -156,7 +165,8 @@ foreach ([
     $checks+=2;
     if (PasswordResetRaceState::$brokerCalls!==$expectedBrokerCalls) {fwrite(STDERR,"wrong broker invocations $label\n");exit(1);}
     ++$checks;
-    if ((PasswordResetRaceState::$password === 'hash-before') !== ($expectedWrites === 0)) {fwrite(STDERR,"password preservation mismatch $label\n");exit(1);}
+    $expectedUnchanged = $race === 'password' ? 'hash-after-change' : 'hash-before';
+    if ((PasswordResetRaceState::$password === $expectedUnchanged) !== ($expectedWrites === 0)) {fwrite(STDERR,"password preservation mismatch $label\n");exit(1);}
     ++$checks;
     if ($expectedWrites===0 && (PasswordResetRaceState::$legacyHash!=='legacy-hash' || PasswordResetRaceState::$rememberToken!=='remember-before')) {fwrite(STDERR,"denied reset mutated user $label\n");exit(1);}
     if ($expectedWrites===1 && (!password_verify('ReplacementPassword2026!',PasswordResetRaceState::$password) || PasswordResetRaceState::$legacyHash!==null || PasswordResetRaceState::$legacySalt!==null || PasswordResetRaceState::$rememberToken==='remember-before')) {
@@ -164,4 +174,4 @@ foreach ([
     }
     $checks+=3;
 }
-echo "PASS: $checks PasswordRecoveryController live-ban/delete race checks (FAKE DB/BROKER, not HTTP/PDO/SMTP)\n";
+echo "PASS: $checks password recovery checks for concurrent bans, deletion and password changes (fake DB and broker)\n";

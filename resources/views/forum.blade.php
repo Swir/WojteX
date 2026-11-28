@@ -15,7 +15,7 @@
     <link rel="stylesheet" href="/assets/custom.css?v=0.1.0-beta.1">
     <script src="/assets/wojtex-appearance.js?v=0.1.0-beta.1-post-text-size1"></script>
     <script src="/assets/wojtex-drafts.js?v=0.1.0-beta.1-edit-drafts1" defer></script>
-    <script src="/assets/forum.js?v=0.1.0-beta.1-admin-category-filter1" defer></script>
+    <script src="/assets/forum.js?v=0.1.0-beta.1-change-password1" defer></script>
 </head>
 <body>
     <a class="skip-link" href="#main-content" data-i18n="ui.nav.skip">{{ __('ui.nav.skip') }}</a>

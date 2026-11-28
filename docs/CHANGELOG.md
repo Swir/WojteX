@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Change your password from your account settings. The current session stays signed in, and other sessions and earlier recovery links are invalidated.
 - Find categories in the admin panel by name, description, slug or parent path. The visibility filter includes restrictions inherited from parent categories, and both filters stay active after saving changes.
 - Create subcategories and move categories with their topics and subcategories from the admin panel. The category list shows parent paths and inherited access restrictions.
 - Wrap long lines in individual code blocks in discussions and editor previews. Copied code retains its original spacing and line breaks.

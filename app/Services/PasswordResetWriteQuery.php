@@ -3,12 +3,9 @@
 namespace App\Services;
 
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
-/**
- * The password broker validates the token, but it does not enforce WojteX's
- * account-ban rule at the instant it persists a new password. The callback
- * must recheck the CURRENT user row in the same UPDATE that rotates secrets.
- */
+/** Shared live-account predicate and credential fields for password changes and recovery. */
 final class PasswordResetWriteQuery
 {
     /** @return \Illuminate\Database\Query\Builder */
@@ -17,5 +14,16 @@ final class PasswordResetWriteQuery
         return DB::table('users')
             ->where('id', $userId)
             ->where('is_banned', false);
+    }
+
+    public static function values(#[\SensitiveParameter] string $hash): array
+    {
+        return [
+            'password' => $hash,
+            'legacy_password_hash' => null,
+            'legacy_password_salt' => null,
+            'remember_token' => Str::random(60),
+            'updated_at' => now()->toDateTimeString(),
+        ];
     }
 }

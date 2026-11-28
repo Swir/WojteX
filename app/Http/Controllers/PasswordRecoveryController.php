@@ -9,7 +9,6 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Password;
-use Illuminate\Support\Str;
 use Illuminate\Support\Timebox;
 use Illuminate\Validation\Rules\Password as PasswordRule;
 
@@ -84,19 +83,15 @@ class PasswordRecoveryController extends Controller
             return response()->json(['message' => __('server.password_reset_invalid')], 422);
         }
 
-        $status = Password::broker()->reset($data, static function (User $user, string $password): void {
+        $status = Password::broker()->reset($data, static function (User $user, #[\SensitiveParameter] string $password): void {
             // The first ban check and even the broker's user lookup may now
             // be stale. A moderator can ban/delete the account while its
             // otherwise-valid token is being verified. Eloquent save() has
             // no live ban predicate; change the secrets only if the database
-            // STILL contains an unbanned account at write time.
-            $updated = PasswordResetWriteQuery::eligible((int) $user->getKey())->update([
-                'password' => Hash::make($password),
-                'legacy_password_hash' => null,
-                'legacy_password_salt' => null,
-                'remember_token' => Str::random(60),
-                'updated_at' => now()->toDateTimeString(),
-            ]);
+            // STILL contains an unbanned account with the same credentials.
+            $updated = PasswordResetWriteQuery::eligible((int) $user->getKey())
+                ->where('password', $user->getAuthPassword())
+                ->update(PasswordResetWriteQuery::values(Hash::make($password)));
             // Reject instead of telling the broker it successfully rotated
             // credentials. Do not consume the reset token on denied writes.
             abort_unless($updated === 1, 422, __('server.password_reset_invalid'));

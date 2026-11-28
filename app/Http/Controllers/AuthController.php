@@ -3,13 +3,16 @@ namespace App\Http\Controllers;
 
 use App\Models\User;
 use App\Services\ForumService as Forum;
+use App\Services\PasswordResetWriteQuery;
 use App\Services\ProfileUpdateQuery;
 use App\Services\RegistrationInsertQuery;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Password as PasswordBroker;
 use Illuminate\Validation\Rules\Password;
 use Illuminate\Validation\ValidationException;
 
@@ -88,6 +91,44 @@ class AuthController extends Controller
     {
         Auth::logout(); $request->session()->invalidate(); $request->session()->regenerateToken();
         return response()->json(['ok'=>true]);
+    }
+
+    public function changePassword(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        abort_if($user->is_banned, 403, __('server.account_blocked'));
+        $data = $request->validate([
+            'current_password' => 'required|string|max:128',
+            'password' => ['required', 'string', 'max:128', 'confirmed', 'different:current_password', Password::min(12)],
+        ]);
+
+        $previousHash = $user->getAuthPassword();
+        try {
+            $matches = Hash::check($data['current_password'], $previousHash);
+        } catch (\RuntimeException) {
+            $matches = false;
+        }
+        if (!$matches) {
+            throw ValidationException::withMessages(['current_password' => __('validation.current_password')]);
+        }
+
+        $changes = PasswordResetWriteQuery::values(Hash::make($data['password']));
+        DB::transaction(static function () use ($user, $previousHash, $changes): void {
+            $affected = PasswordResetWriteQuery::eligible((int) $user->getKey())
+                ->where('password', $previousHash)
+                ->update($changes);
+            abort_unless($affected === 1, 409, __('server.password_change_conflict'));
+            PasswordBroker::broker()->deleteToken($user);
+        });
+
+        // Refresh this session with the exact credentials it saved. A later
+        // concurrent rotation must still cause this session to fail validation.
+        $user->forceFill($changes);
+        $request->session()->regenerate(true);
+        return response()->json([
+            'message' => __('server.password_change_complete'),
+            'csrf_token' => $request->session()->token(),
+        ]);
     }
 
     public function profile(Request $request)
