@@ -371,7 +371,7 @@ function feedCategories(route) {
     </section>`;
 }
 
-function directorySearchText(value) {
+function categorySearchText(value) {
     return value.toLocaleLowerCase(activeLocale()).normalize('NFD').replace(/\p{M}/gu, '').replaceAll('ł', 'l');
 }
 
@@ -404,12 +404,12 @@ function renderDirectory(route) {
     const entries = $$('.wx-category-card', view).map((card, index) => {
         const category = categories[index];
         const metadata = [category.name, category.description, names.get(category.parent_id)].filter(Boolean);
-        return {card, text: directorySearchText(metadata.join(' '))};
+        return {card, text: categorySearchText(metadata.join(' '))};
     });
 
     function applySearch(keepInAddress = true) {
         const query = input.value.trim();
-        const words = directorySearchText(query).split(/\s+/u).filter(Boolean);
+        const words = categorySearchText(query).split(/\s+/u).filter(Boolean);
         let total = 0;
         for (const {card, text} of entries) {
             card.hidden = !words.every(word => text.includes(word));
@@ -1163,18 +1163,30 @@ function renderProfile(){setHeader(tr('ui.profile.title'),tr('ui.profile.subtitl
 
 async function renderAdmin(token){setHeader(tr('ui.admin.title'),tr('ui.admin.subtitle'),tr('ui.admin.eyebrow'));if(state.user?.role!=='admin'){$('#view').innerHTML=`<div class="panel">${empty(tr('ui.admin.access'),tr('ui.admin.access_help'),'shield',!state.user?`<button class="button button-primary" data-action="login">${tx('ui.auth.sign_in')}</button>`:`<a class="button button-secondary" href="#/">${tx('ui.page.back_to_forum')}</a>`)}</div>`;return;}const data=await request('/api/admin');if(token!==state.viewToken)return;state.admin=data;if(state.adminTab==='languages')await refreshLanguages();if(state.adminTab==='groups')await refreshGroups();if(state.adminTab==='message-reports')await refreshReports();if(token!==state.viewToken)return;renderAdminView();}
 function adminTabButton(id,label,ico){return `<button class="admin-tab ${state.adminTab===id?'active':''}" data-action="admin-tab" data-tab="${id}" role="tab" aria-selected="${state.adminTab===id}">${icon(ico)}${e(label)}</button>`;}
-function renderAdminView(){if(!state.admin)return;$('#view').innerHTML=`<div class="admin-tabs" role="tablist" aria-label="${tx('ui.nav.admin')}">${adminTabButton('settings',tr('ui.admin.settings'),'settings')}${adminTabButton('categories',tr('ui.admin.categories'),'layers')}${adminTabButton('plugins',tr('ui.admin.plugins'),'puzzle')}${adminTabButton('languages',tr('ui.languages.tab'),'globe')}${adminTabButton('users',tr('ui.admin.users'),'users')}${adminTabButton('groups',tr('ui.groups.tab'),'shield')}${adminTabButton('message-reports',tr('ui.reports.tab'),'alert')}${adminTabButton('import',tr('ui.admin.import'),'database')}</div><section class="panel admin-panel">${state.adminTab==='settings'?adminSettings():state.adminTab==='categories'?adminCategories():state.adminTab==='plugins'?adminPlugins():state.adminTab==='users'?adminUsers():state.adminTab==='languages'?adminLanguages():state.adminTab==='groups'?adminGroups():state.adminTab==='message-reports'?adminReports():adminImport()}</section>`;if(state.adminTab==='import'&&state.importReport)renderImportReport();}
-function adminSettings(){const s=state.admin.settings||state.bootstrap.settings;const stats=state.admin.stats||state.bootstrap.stats;return `<div class="admin-intro"><h2>${tx('ui.admin.settings_title')}</h2><p>${tx('ui.admin.settings_subtitle')}</p></div><div class="admin-metrics"><div class="admin-metric"><strong>${count(stats.users)}</strong><span>${e(noun(stats.users,'people'))}</span></div><div class="admin-metric"><strong>${count(stats.threads)}</strong><span>${e(noun(stats.threads,'topics'))}</span></div><div class="admin-metric"><strong>${count(stats.posts)}</strong><span>${e(noun(stats.posts,'posts'))}</span></div></div><form data-form="settings"><div class="form-error" role="alert"></div><label class="field"><span>${tx('ui.admin.site_name')}</span><input name="site_name" value="${e(s.site_name)}" required minlength="2" maxlength="80"></label><label class="field"><span>${tx('ui.admin.tagline')}</span><input name="tagline" value="${e(s.tagline)}" required maxlength="160"></label><label class="field"><span>${tx('ui.admin.welcome_title')}</span><input name="welcome_title" value="${e(s.welcome_title)}" required maxlength="180"></label><label class="field"><span>${tx('ui.admin.welcome_text')}</span><textarea name="welcome_text" required maxlength="500" style="min-height:90px">${e(s.welcome_text)}</textarea></label><div class="form-row"><label class="field"><span>${tx('ui.admin.theme')}</span><select name="theme">${['dark','midnight','light','system'].map(mode=>`<option value="${mode}" ${s.theme===mode?'selected':''}>${tx('ui.appearance.'+mode)}</option>`).join('')}</select></label><label class="field"><span>${tx('ui.admin.accent')}</span><select name="accent">${['blue','violet','cyan','green','amber','rose'].map(accent=>`<option value="${accent}" ${s.accent===accent?'selected':''}>${tx('ui.appearance.'+accent)}</option>`).join('')}</select></label></div><label class="checkbox-field"><input type="checkbox" name="registration_open" ${s.registration_open?'checked':''}><span>${tx('ui.admin.registration')}</span></label><div class="form-footer"><button class="button button-primary" type="submit">${icon('check')}${tx('ui.admin.save_settings')}</button></div></form>${state.admin.recent_actions?.length?`<h3 class="admin-section-heading">${tx('ui.admin.recent_actions')}</h3>${state.admin.recent_actions.slice(0,8).map(a=>`<div class="audit-row">${tx('ui.audit.'+a.action,{},a.action)}<time>${e(dateTitle(a.created_at))}</time></div>`).join('')}`:''}`;}
-function adminCategories() {
+function renderAdminView() {
+    if (!state.admin) return;
+    const view = $('#view');
     const categories = state.admin.categories || state.bootstrap.categories || [];
+    const categoryQuery = $('#admin-category-query', view)?.value || '';
+    const categoryAccess = $('#admin-category-access', view)?.value || '';
+    view.innerHTML = `<div class="admin-tabs" role="tablist" aria-label="${tx('ui.nav.admin')}">${adminTabButton('settings',tr('ui.admin.settings'),'settings')}${adminTabButton('categories',tr('ui.admin.categories'),'layers')}${adminTabButton('plugins',tr('ui.admin.plugins'),'puzzle')}${adminTabButton('languages',tr('ui.languages.tab'),'globe')}${adminTabButton('users',tr('ui.admin.users'),'users')}${adminTabButton('groups',tr('ui.groups.tab'),'shield')}${adminTabButton('message-reports',tr('ui.reports.tab'),'alert')}${adminTabButton('import',tr('ui.admin.import'),'database')}</div>
+        <section class="panel admin-panel">${state.adminTab==='settings'?adminSettings():state.adminTab==='categories'?adminCategories(categories, categoryQuery, categoryAccess):state.adminTab==='plugins'?adminPlugins():state.adminTab==='users'?adminUsers():state.adminTab==='languages'?adminLanguages():state.adminTab==='groups'?adminGroups():state.adminTab==='message-reports'?adminReports():adminImport()}</section>`;
+    if (state.adminTab === 'categories') bindAdminCategoryFilters(view, categories);
+    if (state.adminTab === 'import' && state.importReport) renderImportReport();
+}
+function adminSettings(){const s=state.admin.settings||state.bootstrap.settings;const stats=state.admin.stats||state.bootstrap.stats;return `<div class="admin-intro"><h2>${tx('ui.admin.settings_title')}</h2><p>${tx('ui.admin.settings_subtitle')}</p></div><div class="admin-metrics"><div class="admin-metric"><strong>${count(stats.users)}</strong><span>${e(noun(stats.users,'people'))}</span></div><div class="admin-metric"><strong>${count(stats.threads)}</strong><span>${e(noun(stats.threads,'topics'))}</span></div><div class="admin-metric"><strong>${count(stats.posts)}</strong><span>${e(noun(stats.posts,'posts'))}</span></div></div><form data-form="settings"><div class="form-error" role="alert"></div><label class="field"><span>${tx('ui.admin.site_name')}</span><input name="site_name" value="${e(s.site_name)}" required minlength="2" maxlength="80"></label><label class="field"><span>${tx('ui.admin.tagline')}</span><input name="tagline" value="${e(s.tagline)}" required maxlength="160"></label><label class="field"><span>${tx('ui.admin.welcome_title')}</span><input name="welcome_title" value="${e(s.welcome_title)}" required maxlength="180"></label><label class="field"><span>${tx('ui.admin.welcome_text')}</span><textarea name="welcome_text" required maxlength="500" style="min-height:90px">${e(s.welcome_text)}</textarea></label><div class="form-row"><label class="field"><span>${tx('ui.admin.theme')}</span><select name="theme">${['dark','midnight','light','system'].map(mode=>`<option value="${mode}" ${s.theme===mode?'selected':''}>${tx('ui.appearance.'+mode)}</option>`).join('')}</select></label><label class="field"><span>${tx('ui.admin.accent')}</span><select name="accent">${['blue','violet','cyan','green','amber','rose'].map(accent=>`<option value="${accent}" ${s.accent===accent?'selected':''}>${tx('ui.appearance.'+accent)}</option>`).join('')}</select></label></div><label class="checkbox-field"><input type="checkbox" name="registration_open" ${s.registration_open?'checked':''}><span>${tx('ui.admin.registration')}</span></label><div class="form-footer"><button class="button button-primary" type="submit">${icon('check')}${tx('ui.admin.save_settings')}</button></div></form>${state.admin.recent_actions?.length?`<h3 class="admin-section-heading">${tx('ui.admin.recent_actions')}</h3>${state.admin.recent_actions.slice(0,8).map(a=>`<div class="audit-row">${tx('ui.audit.'+a.action,{},a.action)}<time>${e(dateTitle(a.created_at))}</time></div>`).join('')}`:''}`;}
+function adminCategories(categories, query, access) {
     const categoriesById = new Map(categories.map(category => [category.id, category]));
     const rows = categories.map(category => {
-        const ancestors = categoryPath(category, categoriesById).slice(0, -1);
+        const path = categoryPath(category, categoriesById);
+        const ancestors = path.slice(0, -1);
         const parentPath = ancestors.map(item => item.name).join(' / ');
+        const inherited = ancestors.some(item => item.is_private);
+        const restricted = category.is_private || inherited || path[0]?.parent_id !== null;
         const privacy = category.is_private ? tx('ui.topic.private')
-            : ancestors.some(item => item.is_private) ? tx('ui.category.parent_private') : '';
+            : inherited ? tx('ui.category.parent_private') : '';
         const color = tone(category.color);
-        return `<div class="plugin-card wx-admin-category">
+        return `<div class="plugin-card wx-admin-category" data-category-access="${restricted ? 'restricted' : 'public'}">
             <span class="plugin-icon" style="color:${color};background:color-mix(in srgb,${color} 12%,transparent)">${icon(category.icon)}</span>
             <div class="plugin-copy">
                 ${parentPath ? `<small class="wx-admin-category-path">${e(parentPath)}</small>` : ''}
@@ -1188,8 +1200,70 @@ function adminCategories() {
     }).join('');
     return `<div class="admin-intro"><h2>${tx('ui.admin.categories_title')}</h2><p>${tx('ui.admin.categories_subtitle')}</p></div>
         <button type="button" class="button button-secondary button-small" data-action="new-category">${icon('plus')}${tx('ui.category.create')}</button>
-        ${rows || empty(tr('ui.admin.first_category'), tr('ui.admin.first_category_help'), 'layers')}
+        ${rows ? `<div class="wx-feed-filters wx-admin-category-filters" role="search" aria-label="${tx('ui.directory.search')}">
+            <label class="field" for="admin-category-query"><span>${tx('ui.directory.search')}</span><input id="admin-category-query" type="search" maxlength="150" value="${e(query)}" autocomplete="off" aria-controls="admin-category-results"></label>
+            <label class="field" for="admin-category-access"><span>${tx('ui.admin.category_access')}</span><select id="admin-category-access" aria-controls="admin-category-results">
+                <option value="">${tx('ui.admin.categories_all')}</option>
+                <option value="public"${access === 'public' ? ' selected' : ''}>${tx('ui.admin.categories_public')}</option>
+                <option value="restricted"${access === 'restricted' ? ' selected' : ''}>${tx('ui.admin.categories_restricted')}</option>
+            </select></label>
+            <div class="wx-feed-filter-actions"><button type="button" class="button button-ghost" data-clear-category-filters hidden>${tx('ui.feed.saved_filter_clear')}</button></div>
+            <p role="status"></p>
+        </div>
+        <div id="admin-category-results">
+            ${rows}
+            <div data-category-filter-empty hidden>${empty(tr('ui.directory.no_matches'), tr('ui.admin.category_filter_empty_help'), 'search')}</div>
+        </div>` : empty(tr('ui.admin.first_category'), tr('ui.admin.first_category_help'), 'layers')}
         <div class="notice warning"><strong>${tx('ui.admin.import_private')}</strong><p>${tx('ui.admin.import_private_help')}</p></div>`;
+}
+
+function bindAdminCategoryFilters(view, categories) {
+    const filters = $('.wx-admin-category-filters', view);
+    if (!filters) return;
+    const query = $('#admin-category-query', filters);
+    const access = $('#admin-category-access', filters);
+    const clear = $('[data-clear-category-filters]', filters);
+    const status = $('[role="status"]', filters);
+    const entries = $$('#admin-category-results .wx-admin-category', view).map((row, index) => {
+        const category = categories[index];
+        const path = $('.wx-admin-category-path', row)?.textContent;
+        const text = categorySearchText([category.name, category.description, category.slug, path].filter(Boolean).join(' '));
+        return {row, text};
+    });
+    const emptyResults = $('[data-category-filter-empty]', view);
+
+    function applyFilters() {
+        const words = categorySearchText(query.value).split(/\s+/u).filter(Boolean);
+        const visibility = access.value;
+        let total = 0;
+        for (const {row, text} of entries) {
+            const matchesAccess = !visibility || row.dataset.categoryAccess === visibility;
+            row.hidden = !matchesAccess || !words.every(word => text.includes(word));
+            if (!row.hidden) total++;
+        }
+        const label = counted(total, 'categories');
+        if (status.textContent !== label) status.textContent = label;
+        emptyResults.hidden = total > 0;
+        clear.hidden = !query.value && !visibility;
+    }
+
+    query.addEventListener('input', event => {
+        if (!event.isComposing) applyFilters();
+    });
+    query.addEventListener('compositionend', applyFilters);
+    access.addEventListener('change', applyFilters);
+    clear.addEventListener('click', () => {
+        query.value = '';
+        access.value = '';
+        applyFilters();
+        query.focus();
+    });
+    applyFilters();
+}
+
+function focusAdminCategoryAction(action, id) {
+    const control = $(`[data-action="${action}"][data-id="${Number(id)}"]`);
+    (control && !control.closest('[hidden]') ? control : $('#admin-category-query'))?.focus();
 }
 function adminPlugins(){return `<div class="admin-intro"><h2>${tx('ui.admin.plugins_title')}</h2><p>${tx('ui.admin.plugins_subtitle')}</p></div>${(state.admin.plugins||[]).map(p=>{const id=p.id||p.key;return `<div class="plugin-card"><span class="plugin-icon">${icon(id==='shoutbox'?'chat':id==='rankings'?'trophy':id==='welcome'?'spark':'puzzle')}</span><div class="plugin-copy"><h3>${e(p.name)}</h3><p>${e(p.description)}</p><small>${e(p.version||'0.1.0')}${p.author?' · '+e(p.author):''}</small></div><button class="switch" role="switch" aria-checked="${!!p.enabled}" aria-label="${tx('ui.admin.module_label',{name:p.name})}" data-action="toggle-plugin" data-id="${e(id)}" data-enabled="${p.enabled?'1':'0'}"></button></div>`;}).join('')}<div class="notice"><strong>${tx('ui.admin.extensions_title')}</strong><p>${tx('ui.admin.extensions_help')}</p></div>`;}
 function adminUsers(){const users=state.adminUserMatches===null?(state.admin.users||[]):state.adminUserMatches;return `<div class="admin-intro"><h2>${tx('ui.admin.users_title')}</h2><p>${tx('ui.admin.users_subtitle')}</p></div>
@@ -2117,7 +2191,25 @@ case 'group-clear-search':state.groupUserMatches=null;state.groupUserTerm='';ren
 case 'group-delete':{const group=state.groupData?.groups?.find(g=>g.id===id);if(!group)break;confirmModal(tr('ui.groups.delete_title'),tr('ui.groups.delete_confirm',{name:group.name}),tr('ui.common.delete'),async()=>{await request(`/api/admin/groups/${id}`,{method:'DELETE'});closeDialog();await refreshGroups();renderAdminView();toast(tr('ui.groups.saved'));});}break;
 case 'new-category':categoryModal();break;
 case 'edit-category':categoryModal(id);break;
-case 'category-visibility':{const c=(state.admin.categories||state.bootstrap.categories).find(c=>c.id===id);const makePublic=!!c.is_private;confirmModal(makePublic?tr('ui.admin.public_title'):tr('ui.admin.private_title'),makePublic?tr('ui.admin.public_body',{name:c.name}):tr('ui.admin.private_body',{name:c.name}),makePublic?tr('ui.admin.make_public'):tr('ui.admin.make_private'),async()=>{await request(`/api/admin/categories/${id}`,{method:'PATCH',body:{is_private:!c.is_private}});closeDialog();await loadBootstrap();await refreshAdmin();toast(tr('ui.admin.visibility_saved'));},false);}break;
+case 'category-visibility': {
+    const category = (state.admin.categories || state.bootstrap.categories).find(item => item.id === id);
+    const makePublic = Boolean(category.is_private);
+    confirmModal(
+        tr(makePublic ? 'ui.admin.public_title' : 'ui.admin.private_title'),
+        tr(makePublic ? 'ui.admin.public_body' : 'ui.admin.private_body', {name: category.name}),
+        tr(makePublic ? 'ui.admin.make_public' : 'ui.admin.make_private'),
+        async () => {
+            await request(`/api/admin/categories/${id}`, {method: 'PATCH', body: {is_private: !makePublic}});
+            closeDialog();
+            await loadBootstrap();
+            await refreshAdmin();
+            focusAdminCategoryAction('category-visibility', id);
+            toast(tr('ui.admin.visibility_saved'));
+        },
+        false
+    );
+    break;
+}
 }}
 
 document.addEventListener('click',async event=>{const button=event.target.closest('[data-action]');if(!button||button.disabled)return;if(button.tagName!=='A')event.preventDefault();if(button.dataset.busy==='1')return;const immediate=['toggle-menu','close-menu','appearance','reset-appearance','login','register','account','close-dialog','close-on-nav','new-topic','discard-draft','overwrite-draft','quick-search','thread-post-search','thread-post-search-result','sort','page','quote','edit-post','attach-post','preview-attachment','clear-post-attachment','delete-post','delete-thread','delete-shout','format','editor-preview','copy-code','wrap-code','message-reply','admin-tab','ban-user','group-delete','new-category','edit-category','category-visibility'];const busy=!immediate.includes(button.dataset.action);try{if(busy){button.dataset.busy='1';button.setAttribute('aria-busy','true');button.disabled=true;}await handleAction(button,event);}catch(err){toast(err.message,true);if(err.status===401){state.user=null;setUnreadMessages(0,-Infinity);authModal('login');}}finally{if(busy){button.dataset.busy='0';button.removeAttribute('aria-busy');button.disabled=false;}}});
@@ -2217,7 +2309,7 @@ case 'category': {
     closeDialog();
     await loadBootstrap();
     await refreshAdmin();
-    $(`[data-action="edit-category"][data-id="${Number(result.category.id)}"]`)?.focus();
+    focusAdminCategoryAction('edit-category', result.category.id);
     toast(tr(id ? 'ui.admin.category_saved' : 'ui.admin.category_created'));
     break;
 }
