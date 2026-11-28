@@ -252,9 +252,10 @@ async function navigate() {
     const followingFocus = route.name === 'following' && focused?.closest('.wx-follow-filters')
         ? (focused.id ? '#' + focused.id : '.wx-follow-filters nav [aria-current="page"]')
         : null;
-    const feedFilterFocus = ['saved', 'search'].includes(route.name) && focused?.closest('.wx-feed-filters, .wx-saved-sort')
-        ? (focused.id ? '#' + focused.id : '.wx-saved-sort [aria-pressed="true"]')
+    const feedFilterFocus = ['saved', 'search'].includes(route.name) && focused?.id && focused.closest('.wx-feed-filters')
+        ? '#' + focused.id
         : null;
+    const topicSortFocused = focused?.closest('.wx-topic-sort');
     const mailboxNav = route.name === 'messages' ? focused?.closest('.wx-mailbox-nav, .private-message-pager') : null;
     const mailboxSearchFocused = route.name === 'messages' && focused?.id === 'mailbox-query';
     if (route.name !== 'messages' || mailboxSearch?.account !== state.user?.id) mailboxSearch = null;
@@ -312,6 +313,7 @@ async function navigate() {
             void refreshUnreadMessages();
             if (followingFocus) $(followingFocus, view)?.focus({preventScroll: true});
             if (feedFilterFocus) ($(feedFilterFocus, view) || $(`#${route.name}-query`, view))?.focus({preventScroll: true});
+            if (topicSortFocused) $('.wx-topic-sort [aria-pressed="true"]', view)?.focus({preventScroll: true});
             if (mailboxSearchFocused) $('#mailbox-query', view)?.focus({preventScroll: true});
             if (mailboxNav) {
                 const activeFolder = $('.wx-mailbox-nav [aria-current="page"]', view);
@@ -646,13 +648,14 @@ async function renderFeed(route, token) {
     const firstTopic = [tr('ui.feed.first_discussion'), tr('ui.feed.first_help'), 'message', `<button class="button button-secondary" data-action="new-topic">${icon('plus')}${tx('ui.topic.create')}</button>`];
     const sorting = [
         ['latest', 'clock', tx(saved ? 'ui.feed.saved_latest_activity' : 'ui.feed.latest')],
+        ['newest', 'spark', tx('ui.feed.newest')],
         ['popular', 'fire', tx('ui.feed.popular')],
         ['unanswered', 'message', tx('ui.feed.unanswered')]
     ];
     if (saved) sorting.unshift(['recently_saved', 'bookmark', tx('ui.feed.recently_saved')]);
     const controls = following
         ? followingFilters(categories, filterCategory, unread, filterTerm)
-        : `<div class="topic-tabs${saved ? ' wx-saved-sort' : ''}" role="group" aria-label="${tx('ui.feed.sort_label')}">
+        : `<div class="topic-tabs wx-topic-sort" role="group" aria-label="${tx('ui.feed.sort_label')}">
             ${sorting.map(([value, symbol, label]) => `<button type="button" class="topic-tab ${state.sort === value ? 'active' : ''}" aria-pressed="${state.sort === value}" data-action="sort" data-sort="${value}">${icon(symbol)}${label}</button>`).join('')}
         </div>`;
     view.innerHTML = `

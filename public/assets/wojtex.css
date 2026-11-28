@@ -294,9 +294,9 @@
 .wx-feed-filter-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .wx-feed-filter-actions .button { min-height: 44px; }
 .wx-feed-filters :is(input, select, button):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.wx-saved-sort { flex-wrap: wrap; gap: 0 16px; }
-.wx-saved-sort .topic-tab { min-height: 44px; font-size: 12px; }
-.wx-saved-sort .topic-tab:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.wx-topic-sort { flex-wrap: wrap; gap: 0 16px; }
+.wx-topic-sort .topic-tab { min-height: 44px; font-size: 12px; }
+.wx-topic-sort .topic-tab:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .wx-mailbox-nav { flex-wrap: wrap; gap: 0 16px; margin: 0 0 10px; padding: 0 3px; overflow: visible; }
 .wx-mailbox-nav .topic-tab { min-height: 44px; font-size: 13px; }
 .wx-mailbox-nav .topic-tab:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }

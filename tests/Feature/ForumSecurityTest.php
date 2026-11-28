@@ -117,6 +117,33 @@ class ForumSecurityTest extends TestCase
         }
     }
 
+    public function test_topic_creation_order_combines_search_and_category_with_pins_and_stable_ties(): void
+    {
+        $author = $this->user();
+        $category = $this->category();
+        [$older] = $this->thread($author, $category, 'Calendar discussion with a recent reply');
+        [$newer] = $this->thread($author, $category, 'New calendar discussion');
+        [$sameSecond] = $this->thread($author, $category, 'Another new calendar discussion');
+        [$pinned] = $this->thread($author, $category, 'Pinned calendar discussion');
+        $this->thread($author, $category, 'Unrelated topic');
+        $this->thread($author, $this->category(), 'Calendar in another category');
+        DB::table('threads')->where('id', $older)->update([
+            'created_at' => '2026-10-20 12:00:00', 'updated_at' => '2026-10-24 12:00:00',
+        ]);
+        DB::table('threads')->whereIn('id', [$newer, $sameSecond])->update([
+            'created_at' => '2026-10-23 12:00:00', 'updated_at' => '2026-10-23 12:00:00',
+        ]);
+        DB::table('threads')->where('id', $pinned)->update([
+            'is_pinned' => true, 'created_at' => '2026-10-19 12:00:00', 'updated_at' => '2026-10-19 12:00:00',
+        ]);
+
+        $search = '/api/threads?q=calendar&category='.$category;
+        $latest = $this->getJson($search)->assertOk()->assertJsonPath('total', 4);
+        $this->assertSame([$pinned, $older, $sameSecond, $newer], array_column($latest->json('data'), 'id'));
+        $newest = $this->getJson($search.'&sort=newest')->assertOk()->assertJsonPath('total', 4);
+        $this->assertSame([$pinned, $sameSecond, $newer, $older], array_column($newest->json('data'), 'id'));
+    }
+
     /**
      * Native PHPUnit/PDO qualification gate for the batched 40-post response.
      * This test is intentionally not counted PASS on a PHP without pdo_sqlite.

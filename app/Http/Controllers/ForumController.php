@@ -60,7 +60,7 @@ class ForumController extends Controller
         $data = $request->validate([
             'category' => 'nullable|integer|min:1',
             'q' => 'nullable|string|max:150',
-            'sort' => 'nullable|in:latest,popular,unanswered,recently_saved',
+            'sort' => 'nullable|in:latest,newest,popular,unanswered,recently_saved',
             'page' => 'nullable|integer|min:1|max:100000',
             'bookmarked' => 'nullable|boolean',
             'following' => 'nullable|boolean',
@@ -93,7 +93,7 @@ class ForumController extends Controller
         } else {
             $query->orderByDesc('t.is_pinned');
             if ($sort === 'popular') $query->orderByDesc('reactions_count')->orderByDesc('posts_count');
-            $query->orderByDesc('t.updated_at')->orderByDesc('t.id');
+            $query->orderByDesc($sort === 'newest' ? 't.created_at' : 't.updated_at')->orderByDesc('t.id');
         }
         $page = $query->paginate(15);
         return response()->json(['data'=>Forum::threadsData($page->getCollection()),'current_page'=>$page->currentPage(),'last_page'=>$page->lastPage(),'total'=>$page->total()]);

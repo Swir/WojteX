@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Sort topics by when they were created. Pinned topics stay at the top, and the selected order works with category and search filters.
 - Queue attachments while writing a reply. If an upload fails, retry the remaining files from the attachment dialog after the reply is published.
 - Refine forum search results by category and edit the search phrase directly on the results page.
 - See the character count while writing, editing or restoring a post draft. The Markdown toolbar formats multiple selected lines as a list or quote.
