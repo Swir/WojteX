@@ -16,6 +16,7 @@ routes = json.loads(result.stdout)
 expected = {
     ('GET|HEAD', 'api/messages'),
     ('POST', 'api/messages'),
+    ('POST', 'api/messages/search'),
     ('GET|HEAD', 'api/messages/blocks'),
     ('POST', 'api/messages/blocks'),
     ('DELETE', 'api/messages/blocks/{id}'),

@@ -50,6 +50,8 @@ class PrivateMessageLiveAccessTest extends TestCase
         $this->assertFalse((bool)$receiver->is_banned);
         $this->getJson('/api/messages')->assertForbidden()
             ->assertDontSee('Synthetic confidential example');
+        $this->postJson('/api/messages/search', ['q' => 'confidential'])->assertForbidden()
+            ->assertDontSee('Synthetic confidential example');
         $this->getJson('/api/messages/blocks')->assertForbidden();
         $this->getJson('/api/messages/recipients?q=Sen')->assertForbidden();
         $this->patchJson('/api/messages/'.$id.'/read')->assertForbidden();

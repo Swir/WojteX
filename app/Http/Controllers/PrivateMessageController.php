@@ -37,19 +37,39 @@ class PrivateMessageController extends Controller
     {
         $id = $this->allowAccount($request);
         $data = $request->validate(['folder' => 'nullable|string|in:all,unread,received,sent']);
+        return $this->mailbox($id, $data['folder'] ?? 'all');
+    }
+
+    public function search(Request $request): JsonResponse
+    {
+        $id = $this->allowAccount($request);
+        $data = validator($request->post(), [
+            'q' => 'required|string|max:150',
+            'folder' => 'nullable|string|in:all,unread,received,sent',
+            'page' => 'nullable|integer|min:1|max:100000',
+        ])->validate();
+
+        return $this->mailbox($id, $data['folder'] ?? 'all', $data['q'], (int) ($data['page'] ?? 1));
+    }
+
+    private function mailbox(int $id, string $folder, ?string $term = null, ?int $page = null): JsonResponse
+    {
         // Sender and recipient independently control visibility of their copy.
         // The other participant's copy remains available when one hides theirs.
         $visible = DB::table('private_messages')->where(fn ($q) => $q
             ->where(fn ($sender) => $sender->where('sender_id', $id)->whereNull('sender_hidden_at'))
             ->orWhere(fn ($recipient) => $recipient->where('recipient_id', $id)->whereNull('recipient_hidden_at')));
         $unread = PrivateMessageReadReceiptQuery::unread($id);
-        $query = match ($data['folder'] ?? 'all') {
+        $query = match ($folder) {
             'received' => PrivateMessageReadReceiptQuery::received($id),
             'unread' => clone $unread,
             'sent' => DB::table('private_messages')->where('sender_id', $id)->whereNull('sender_hidden_at'),
             default => $visible,
         };
-        $messages = $query->orderByDesc('id')->paginate(30);
+        if ($term !== null) {
+            $query->whereRaw("body LIKE ? ESCAPE '!'", [PrivateMessageRecipientSearch::likePattern($term)]);
+        }
+        $messages = $query->orderByDesc('id')->paginate(30, ['*'], 'page', $page);
         $rows = $messages->getCollection();
         $ids = $rows->flatMap(fn ($m) => [(int) $m->sender_id, (int) $m->recipient_id])->unique()->all();
         $users = DB::table('users')->whereIn('id', $ids)->get()->keyBy('id');

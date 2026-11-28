@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Search the text of private messages across mailbox pages. The phrase stays in the current mailbox view when changing folders.
 - Choose a post text size in Appearance. The setting is saved in your browser and applies to discussions and editor previews.
 - Sort saved topics by when you bookmarked them. Search and category filters still work with this order.
 - Search titles and posts in followed topics. Search works with the category and new replies filters, and stays in the address when you switch tabs or pages.

@@ -108,6 +108,7 @@ const state = {bootstrap:null,user:null,csrf:$('meta[name="csrf-token"]')?.conte
 let summaryRequest;
 let sidebarStarted = false;
 let sidebarViewerGeneration = 0;
+let mailboxSearch = null;
 
 async function request(url, options = {}, retried = false) {
     const init = {method:'GET',credentials:'same-origin',...options};
@@ -139,7 +140,10 @@ async function loadBootstrap({initial = false} = {}) {
         state.bootstrap=await request(endpoint);
     }
     acceptI18n(state.bootstrap.i18n);state.user=state.bootstrap.user;state.csrf=state.bootstrap.csrf_token||state.csrf;
-    if (previousViewer?.id !== state.user?.id || previousViewer?.created_at !== state.user?.created_at) setUnreadMessages(0, -Infinity);
+    if (previousViewer?.id !== state.user?.id || previousViewer?.created_at !== state.user?.created_at) {
+        mailboxSearch = null;
+        setUnreadMessages(0, -Infinity);
+    }
     if (previousViewer?.id !== state.user?.id || previousViewer?.role !== state.user?.role) {
         ++sidebarViewerGeneration;
         sidebarStarted = false;
@@ -252,6 +256,8 @@ async function navigate() {
         ? (focused.id ? '#' + focused.id : '.wx-saved-sort [aria-pressed="true"]')
         : null;
     const mailboxNav = route.name === 'messages' ? focused?.closest('.wx-mailbox-nav, .private-message-pager') : null;
+    const mailboxSearchFocused = route.name === 'messages' && focused?.id === 'mailbox-query';
+    if (route.name !== 'messages' || mailboxSearch?.account !== state.user?.id) mailboxSearch = null;
     state.route = route;
     state.thread = null;
     state.page = state.threadPage = Number(route.query.get('page')) || 1;
@@ -287,11 +293,17 @@ async function navigate() {
         if (token !== state.viewToken) return;
         const title = err.status === 404 ? tr('ui.page.content_missing')
             : err.status === 403 ? tr('ui.page.private') : tr('ui.page.load_failed');
-        const retry = `<button class="button button-secondary" data-action="retry-view">${tx('ui.common.retry')}</button>`;
         const denied = err.status === 401 || err.status === 403;
+        const retry = `<button class="button button-secondary" data-action="retry-view">${tx('ui.common.retry')}</button>`;
+        const clearSearch = route.name === 'messages' && mailboxSearch && !denied
+            ? `<button type="button" class="button button-ghost" data-action="clear-mailbox-search">${tx('ui.messages.search_clear')}</button>`
+            : '';
         const target = denied ? view : content;
-        if (route.name === 'messages' && denied) setUnreadMessages(0);
-        target.innerHTML = `<div class="panel">${empty(title, err.message, err.status === 403 ? 'lock' : 'alert', retry)}</div>`;
+        if (route.name === 'messages' && denied) {
+            mailboxSearch = null;
+            setUnreadMessages(0);
+        }
+        target.innerHTML = `<div class="panel">${empty(title, err.message, err.status === 403 ? 'lock' : 'alert', retry + clearSearch)}</div>`;
     } finally {
         if (token === state.viewToken) {
             view.setAttribute('aria-busy', 'false');
@@ -300,6 +312,7 @@ async function navigate() {
             void refreshUnreadMessages();
             if (followingFocus) $(followingFocus, view)?.focus({preventScroll: true});
             if (savedFocus) ($(savedFocus, view) || $('#saved-query', view))?.focus({preventScroll: true});
+            if (mailboxSearchFocused) $('#mailbox-query', view)?.focus({preventScroll: true});
             if (mailboxNav) {
                 const activeFolder = $('.wx-mailbox-nav [aria-current="page"]', view);
                 if (mailboxNav.classList.contains('wx-mailbox-nav')) activeFolder?.focus();
@@ -1022,6 +1035,29 @@ function mailboxUrl(folder, page = 1) {
     return '#/messages' + (params.size ? '?' + params : '');
 }
 
+function updateMailboxSearch(term) {
+    mailboxSearch = term ? {account: state.user?.id, term} : null;
+    $('#mailbox-query')?.focus({preventScroll: true});
+    if (routeInfo().query.has('page')) {
+        updateRouteQuery({page: null});
+        return;
+    }
+    return navigate();
+}
+
+function mailboxSearchForm(term) {
+    return `<form class="wx-feed-filters" data-form="mailbox-search" role="search" aria-label="${tx('ui.messages.search_label')}">
+        <label class="field" for="mailbox-query">
+            <span>${tx('ui.messages.search_label')}</span>
+            <input id="mailbox-query" name="q" type="search" value="${e(term)}" maxlength="150" autocomplete="off">
+        </label>
+        <div class="wx-feed-filter-actions">
+            <button type="submit" class="button button-secondary">${icon('search')}${tx('ui.messages.search_submit')}</button>
+            ${term ? `<button type="button" class="button button-ghost" data-action="clear-mailbox-search">${tx('ui.messages.search_clear')}</button>` : ''}
+        </div>
+    </form>`;
+}
+
 function privateMessageBodyField() {
     return `<label class="field"><span>${tx('ui.messages.body')}</span><textarea name="body" minlength="1" maxlength="4000" required placeholder="${tx('ui.messages.body_placeholder')}"></textarea></label>`;
 }
@@ -1041,9 +1077,13 @@ async function renderPrivateMessages(route, token) {
         ['sent', 'send', tx('ui.messages.folder_sent')],
     ];
     const folder = folders.find(([value]) => value === route.query.get('folder'))?.[0] || 'all';
-    const query = new URLSearchParams({folder, page: String(state.page)});
+    const term = mailboxSearch?.term || '';
+    const page = Number.isSafeInteger(state.page) && state.page > 0 ? Math.min(state.page, 100000) : 1;
+    const inbox = term
+        ? request('/api/messages/search', {method: 'POST', body: {folder, page, q: term}})
+        : request('/api/messages?' + new URLSearchParams({folder, page: String(state.page)}));
     const [result, blockResponse]=await Promise.all([
-        request('/api/messages?' + query),
+        inbox,
         request('/api/messages/blocks'),
     ]);
     if(token!==state.viewToken)return;
@@ -1094,7 +1134,10 @@ async function renderPrivateMessages(route, token) {
         sent: tr('ui.messages.sent_empty'),
     };
     const throughId = Number(result.unread_through_id);
-    const markAll = (folder === 'all' || folder === 'unread') && Number.isSafeInteger(throughId) && throughId > 0;
+    const markAll = !term && (folder === 'all' || folder === 'unread') && Number.isSafeInteger(throughId) && throughId > 0;
+    const noMessages = term
+        ? empty(tr('ui.messages.search_empty'), tr('ui.messages.search_empty_help'), 'search')
+        : folder === 'all' ? empty(tr('ui.messages.empty'), tr('ui.messages.empty_help')) : empty(folderEmpty[folder], '');
     $('[data-mailbox-content]', view).innerHTML = `
         <section class="panel private-message-inbox">
             <div class="discussion-toolbar wx-mailbox-heading">
@@ -1104,7 +1147,8 @@ async function renderPrivateMessages(route, token) {
             <nav class="wx-mailbox-nav topic-tabs" aria-label="${tx('ui.messages.folders')}">
                 ${folders.map(([value, symbol, label]) => `<a class="topic-tab${value === folder ? ' active' : ''}" href="${mailboxUrl(value)}"${value === folder ? ' aria-current="page"' : ''}>${icon(symbol)}${label}</a>`).join('')}
             </nav>
-            ${entries || (folder === 'all' ? empty(tr('ui.messages.empty'), tr('ui.messages.empty_help')) : empty(folderEmpty[folder], ''))}${pager}</section>
+            ${mailboxSearchForm(term)}
+            ${entries || noMessages}${pager}</section>
         <section class="panel private-message-inbox"><div class="discussion-toolbar"><h2>${tx('ui.messages.blocks_title')}</h2></div>
             <p class="form-note">${tx('ui.messages.blocks_help')}</p>
             ${blockedUsers.length?blockedUsers.map(u=>`<article class="private-message-row"><div class="private-message-heading"><strong>${e(u.name)} (#${Number(u.id)})</strong></div><button type="button" class="button button-small button-secondary" data-action="message-unblock" data-id="${Number(u.id)}">${icon('unlock')}${tx('ui.messages.unblock')}</button></article>`).join(''):`<p class="form-note">${tx('ui.messages.blocks_empty')}</p>`}
@@ -1896,6 +1940,7 @@ case 'message-unblock':confirmModal(tr('ui.messages.unblock_title'),tr('ui.messa
 },false);break;
 case 'message-report':reportMessageModal(id);break;
 case 'message-reply':replyMessageModal(button, id);break;
+case 'clear-mailbox-search':await updateMailboxSearch('');break;
 case 'message-read':
     await request(`/api/messages/${id}/read`, {method: 'PATCH'});
     if (button.isConnected) {
@@ -2009,6 +2054,9 @@ case 'page-jump': {
 case 'thread-post-search':
     if (Array.from(values.q.trim()).length < 2) throw new Error(tr('ui.thread_search.minimum'));
     await loadThreadPostSearch(form, values.q.trim());
+    break;
+case 'mailbox-search':
+    await updateMailboxSearch(values.q.trim());
     break;
 case 'following-filters':
 case 'saved-filters':

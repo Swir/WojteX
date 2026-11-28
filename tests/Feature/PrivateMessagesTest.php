@@ -113,6 +113,10 @@ class PrivateMessagesTest extends TestCase
         $this->getJson('/api/messages?page=2')->assertOk()->assertJsonCount(5, 'data');
         $this->getJson('/api/messages?folder=sent&page=2')->assertOk()
             ->assertJsonCount(5, 'data')->assertJsonPath('current_page', 2)->assertJsonPath('last_page', 2);
+        $this->postJson('/api/messages/search', ['q' => 'Message', 'folder' => 'sent', 'page' => 2])
+            ->assertOk()->assertJsonCount(5, 'data')->assertJsonPath('current_page', 2)->assertJsonPath('last_page', 2)
+            ->assertJsonPath('data.0.body', 'Message 5');
+        $this->postJson('/api/messages/search', ['q' => 'Message 1'])->assertOk()->assertJsonCount(11, 'data');
         $this->actingAs($c);
         $this->getJson('/api/messages')->assertOk()->assertJsonCount(1, 'data')
             ->assertJsonPath('data.0.body', 'Other conversation');
@@ -147,6 +151,40 @@ class PrivateMessagesTest extends TestCase
         $this->getJson('/api/messages?folder=unread')->assertOk()->assertJsonCount(0, 'data')->assertJsonPath('unread', 0);
         $this->actingAs($partner)->getJson('/api/messages?folder=sent')->assertOk()->assertJsonFragment(['id' => $hidden]);
         $this->actingAs($other)->getJson('/api/messages?folder=sent')->assertOk()->assertJsonCount(0, 'data');
+    }
+
+    public function test_mailbox_search_matches_literal_text_in_visible_copies_only(): void
+    {
+        $reader = $this->account('Reader', 'reader-search@example.test');
+        $partner = $this->account('Partner', 'partner-mail-search@example.test');
+        $staff = $this->account('Staff', 'staff-search@example.test', 'admin');
+        $now = now();
+        $add = fn (User $sender, User $recipient, string $body, array $flags = []) => DB::table('private_messages')
+            ->insertGetId($flags + [
+                'sender_id' => $sender->id, 'recipient_id' => $recipient->id, 'body' => $body,
+                'created_at' => $now, 'updated_at' => $now,
+            ]);
+        $read = $add($partner, $reader, 'Received 100% earlier', ['read_at' => $now, 'sender_hidden_at' => $now]);
+        $unread = $add($partner, $reader, 'Received 100% today');
+        $sent = $add($reader, $partner, 'Sent 100% today');
+        $add($partner, $reader, 'Hidden received 100%', ['recipient_hidden_at' => $now]);
+        $add($reader, $partner, 'Hidden sent 100%', ['sender_hidden_at' => $now]);
+        $other = $add($partner, $staff, 'Private 100% elsewhere');
+        $newestUnread = $add($partner, $reader, 'Unmatched quantity of 100 units');
+
+        $url = '/api/messages/search';
+        $this->postJson($url, ['q' => '100%'])->assertUnauthorized();
+        $this->actingAs($reader)->postJson($url.'?q=100%25', [])->assertUnprocessable()->assertJsonValidationErrors('q');
+        foreach (['all' => [$sent, $unread, $read], 'unread' => [$unread], 'received' => [$unread, $read], 'sent' => [$sent]] as $folder => $expected) {
+            $response = $this->postJson($url, ['q' => '  100%  ', 'folder' => $folder])
+                ->assertOk()->assertHeaderContains('Cache-Control', 'no-store')
+                ->assertJsonPath('unread', 2)->assertJsonPath('unread_through_id', $newestUnread);
+            $this->assertSame($expected, array_column($response->json('data'), 'id'));
+        }
+        $this->assertDatabaseHas('private_messages', ['id' => $unread, 'read_at' => null]);
+        $this->postJson($url, ['q' => 'not present'])->assertOk()->assertJsonCount(0, 'data');
+        $this->actingAs($staff)->postJson($url, ['q' => '%'])->assertOk()
+            ->assertJsonCount(1, 'data')->assertJsonPath('data.0.id', $other);
     }
 
     public function test_recipient_search_disambiguates_names_without_exposing_account_details(): void
