@@ -40,9 +40,9 @@ class ThreadCreateQuerySeam {
     public function selectRaw(string $sql, array $bindings=[]): self {$this->selection=$sql;$this->bindings=$bindings;return $this;}
     public function find(int $id): ?object {if ($this->table !== 'categories') throw new RuntimeException('Unexpected find');return (object)['id'=>$id,'is_private'=>false];}
     public function insertGetId(array $row): int {
-        if ($this->table !== 'threads') throw new RuntimeException('Unexpected old insert');
-        ++$this->db->attempts; ++$this->db->threadWrites;
-        return 42;
+        if ($this->table !== 'posts' || $row['thread_id'] !== 42 || $row['user_id'] !== 7) throw new RuntimeException('Malformed reply');
+        ++$this->db->postWrites;
+        throw new ThreadCreatePostCommitted();
     }
     public function insertUsing(array $columns, mixed $query): int {
         if ($this->table !== 'threads' || !$query instanceof self || $query->table !== 'users'
@@ -57,11 +57,6 @@ class ThreadCreateQuerySeam {
         if (!$this->db->currentExists || $this->db->currentBan) return 0;
         ++$this->db->threadWrites;
         return 1;
-    }
-    public function insert(array $row): never {
-        if ($this->table !== 'posts' || $row['thread_id'] !== 42 || $row['user_id'] !== 7) throw new RuntimeException('Malformed reply');
-        ++$this->db->postWrites;
-        throw new ThreadCreatePostCommitted();
     }
 }
 class ThreadCreateRequest extends Request {

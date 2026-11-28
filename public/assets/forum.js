@@ -1432,7 +1432,7 @@ function discardDraft(form) {
     form.elements.body.value = entry.published ?? '';
     entry.baseline = entry.revision;
     if (form.elements.title) form.elements.title.value = '';
-    if (form.elements.attachment) clearPostAttachment(form.elements.attachment);
+    if (form.elements.attachment) clearPostAttachments(form.elements.attachment);
     showDraftStatus(form, 'discarded');
     form.elements.body.focus();
 }
@@ -1739,55 +1739,99 @@ function changePasswordModal() {
 
 const postAttachmentExtensions = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.pdf', '.txt', '.zip'];
 const maxPostAttachmentSize = 5 * 1024 * 1024;
+const maxPostAttachments = 5;
+const postAttachmentQueues = new WeakMap();
 
-function postAttachmentPicker(name, required = false) {
+function postAttachmentPicker(name, required = false, slots = maxPostAttachments) {
     const hintId = `attachment-${name}-hint`;
     const errorId = `attachment-${name}-error`;
-    return `<div class="wx-attachment-picker">
+    return `<div class="wx-attachment-picker" data-slots="${slots}"${required ? ' data-required' : ''}>
         <label class="field wx-attachment-drop" data-attachment-drop>
-            <span>${tx(required ? 'ui.common.choose_file' : 'ui.post.attachment')}</span>
-            <input type="file" name="${name}" accept="${postAttachmentExtensions.join(',')}" ${required ? 'required ' : ''}data-post-attachment aria-describedby="${hintId} ${errorId}">
+            <span>${tx('ui.attachment.choose_files')}</span>
+            <input type="file" name="${name}" accept="${postAttachmentExtensions.join(',')}" multiple data-post-attachment aria-describedby="${hintId} ${errorId}">
             <small class="wx-attachment-drop-hint" aria-hidden="true">${tx('ui.attachment.drop_hint')}</small>
-            <small id="${hintId}">${tx(required ? 'ui.attachment.limits' : 'ui.compose.file_help')}</small>
+            <small id="${hintId}">${tx('ui.attachment.limits')}</small>
             ${required ? '' : `<small>${tx('ui.drafts.file_help')}</small>`}
         </label>
-        <div class="wx-attachment-selection">
-            <p data-attachment-file role="status"></p>
-            <button type="button" class="button button-small button-ghost" data-action="clear-post-attachment" hidden>${tx('ui.attachment.clear_selection')}</button>
-        </div>
+        <p class="wx-attachment-status" data-attachment-status role="status">${tx('ui.attachment.slots', {count: slots})}</p>
+        <ul class="wx-attachment-selection" data-attachment-queue hidden></ul>
         <p id="${errorId}" data-attachment-error role="alert"></p>
     </div>`;
 }
 
-function updatePostAttachment(input) {
-    const picker = input.closest('.wx-attachment-picker');
-    const file = input.files[0];
-    const summary = $('[data-attachment-file]', picker);
-    const feedback = $('[data-attachment-error]', picker);
-    let label = '';
-    let error = '';
-    if (file) {
-        const extension = file.name.match(/\.[^.]+$/)?.[0].toLowerCase();
-        if (!postAttachmentExtensions.includes(extension)) error = tr('ui.attachment.invalid_type');
-        else if (file.size > maxPostAttachmentSize) error = tr('ui.attachment.invalid_size');
-
-        const [unit, divisor] = file.size >= 1024 * 1024 ? ['MiB', 1024 * 1024]
-            : file.size >= 1024 ? ['KiB', 1024] : ['B', 1];
-        const amount = new Intl.NumberFormat(activeLocale(), {maximumFractionDigits: 1}).format(file.size / divisor);
-        label = tr('ui.attachment.selection', {name: file.name, size: `${amount} ${unit}`});
-    }
-    if (summary.textContent !== label) summary.textContent = label;
-    if (feedback.textContent !== error) feedback.textContent = error;
-    $('[data-action="clear-post-attachment"]', picker).hidden = !file;
-    if (error) input.setAttribute('aria-invalid', 'true');
-    else input.removeAttribute('aria-invalid');
-    input.setCustomValidity(error);
-    return !error;
+function postAttachmentQueue(picker) {
+    if (!postAttachmentQueues.has(picker)) postAttachmentQueues.set(picker, []);
+    return postAttachmentQueues.get(picker);
 }
 
-function clearPostAttachment(input) {
+function attachmentSelectionLabel(file) {
+    const [unit, divisor] = file.size >= 1024 * 1024 ? ['MiB', 1024 * 1024]
+        : file.size >= 1024 ? ['KiB', 1024] : ['B', 1];
+    const amount = new Intl.NumberFormat(activeLocale(), {maximumFractionDigits: 1}).format(file.size / divisor);
+    return tr('ui.attachment.selection', {name: file.name, size: `${amount} ${unit}`});
+}
+
+function renderPostAttachmentQueue(picker, statusMessage = '') {
+    const queue = postAttachmentQueue(picker);
+    const list = $('[data-attachment-queue]', picker);
+    const uploading = picker.dataset.uploading === '1';
+    const input = $('[data-post-attachment]', picker);
+    const slots = Number(picker.dataset.slots);
+    list.hidden = !queue.length;
+    list.innerHTML = queue.map(({file, key, invalid, error}) => `<li>
+        <div><span>${e(attachmentSelectionLabel(file))}</span>
+        ${invalid || error ? `<small class="wx-attachment-file-error">${e(invalid || error)}</small>` : ''}</div>
+        <button type="button" class="button button-small button-ghost" data-action="remove-post-attachment" data-key="${key}" aria-label="${tx('ui.attachment.remove_file', {name: file.name})}" ${uploading ? 'disabled' : ''}>${tx('ui.common.delete')}</button>
+    </li>`).join('');
+    input.disabled = uploading || slots === 0;
+    if (queue.some(item => item.invalid)) input.setAttribute('aria-invalid', 'true');
+    else input.removeAttribute('aria-invalid');
+    if (!uploading) {
+        $('[data-attachment-status]', picker).textContent = statusMessage
+            || tr('ui.attachment.slots', {count: Math.max(0, slots - queue.length)});
+    }
+}
+
+function addPostAttachments(input, files) {
+    const picker = input.closest('.wx-attachment-picker');
+    if (input.disabled || input.form.dataset.busy === '1' || !files.length) return;
+    const queue = postAttachmentQueue(picker);
+    const feedback = $('[data-attachment-error]', picker);
+    if (files.length + queue.length > Number(picker.dataset.slots)) {
+        feedback.textContent = tr('ui.attachment.selection_limit', {count: Math.max(0, Number(picker.dataset.slots) - queue.length)});
+        return;
+    }
+    for (const file of files) {
+        const extension = file.name.match(/\.[^.]+$/)?.[0].toLowerCase();
+        let invalid = '';
+        if (!postAttachmentExtensions.includes(extension)) invalid = tr('ui.attachment.invalid_type');
+        else if (file.size > maxPostAttachmentSize) invalid = tr('ui.attachment.invalid_size');
+        else if (!file.size) invalid = tr('ui.attachment.invalid_empty');
+        const key = Array.from(crypto.getRandomValues(new Uint8Array(16)), byte => byte.toString(16).padStart(2, '0')).join('');
+        queue.push({file, key, invalid, error: ''});
+    }
+    feedback.textContent = '';
+    renderPostAttachmentQueue(picker);
+}
+
+function clearPostAttachments(input) {
+    const picker = input.closest('.wx-attachment-picker');
+    postAttachmentQueue(picker).length = 0;
     input.value = '';
-    updatePostAttachment(input);
+    $('[data-attachment-error]', picker).textContent = '';
+    renderPostAttachmentQueue(picker);
+}
+
+function validatePostAttachmentQueue(picker) {
+    const queue = postAttachmentQueue(picker);
+    const invalidFile = queue.some(item => item.invalid);
+    const missingFile = picker.hasAttribute('data-required') && !queue.length;
+    if (!invalidFile && !missingFile) return true;
+    const details = picker.closest('details');
+    if (details) details.open = true;
+    $('[data-attachment-error]', picker).textContent = tr(invalidFile ? 'ui.attachment.remove_invalid' : 'ui.attachment.required');
+    $('[data-post-attachment]', picker).focus();
+    return false;
 }
 function newTopicModal(){if(!ensureAuth())return;const categories=(state.bootstrap.categories||[]).filter(c=>c.can_create!==false);if(!categories.length){toast(tr('ui.compose.no_category'),true);return;}const selected=state.route?.name==='category'?state.route.id:state.thread?.thread?.category_id;modal(tr('ui.topic.new'),tr('ui.compose.subtitle'),`<form data-form="new-topic"><div class="form-error" role="alert"></div><label class="field"><span>${tx('ui.compose.topic_title')}</span><input name="title" placeholder="${tx('ui.compose.topic_placeholder')}" required minlength="5" maxlength="180"></label><label class="field"><span>${tx('ui.compose.space')}</span><select name="category_id" required>${categories.map(c=>`<option value="${Number(c.id)}" ${selected===c.id?'selected':''}>${e(c.name)}${e(c.is_private?tr('ui.common.private_suffix'):'')}</option>`).join('')}</select></label><div class="field"><span>${tx('ui.compose.message')}</span>${editor('body','',tr('ui.compose.body_placeholder'))}</div>${draftControls()}<p class="composer-note">${tx('ui.post.markdown_help')}</p><details class="composer-attachment"><summary>${icon('paperclip')}${tx('ui.post.attachment')} · ${tx('ui.common.optional')}</summary>${postAttachmentPicker('attachment')}</details><div class="form-footer"><button type="button" class="button button-ghost" data-action="close-dialog">${tx('ui.common.cancel')}</button><button type="submit" class="button button-primary">${tx('ui.compose.publish')}${icon('arrow-right')}</button></div></form>`,true);bindDraft($('[data-form="new-topic"]',dialog));}
 function editPostModal(id) {
@@ -1835,7 +1879,67 @@ async function refreshEditSource(button) {
     button.hidden = true;
     $('summary', source).focus();
 }
-function attachmentModal(id){modal(tr('ui.attachment.title'),tr('ui.attachment.subtitle'),`<form data-form="attachment" data-id="${id}"><div class="form-error" role="alert"></div>${postAttachmentPicker('file', true)}<div class="form-footer"><button type="submit" class="button button-primary">${icon('upload')}${tx('ui.common.upload_file')}</button></div></form>`,false,'paperclip');}
+function attachmentModal(id, threadId = state.thread?.thread?.id, queue = []) {
+    const post = state.thread?.posts?.find(item => item.id === id);
+    const slots = Math.max(0, maxPostAttachments - (post?.attachments?.length || 0));
+    modal(tr('ui.attachment.title'), tr('ui.attachment.subtitle'), `<form data-form="attachment" data-id="${id}" data-thread="${Number(threadId)}">
+        <div class="form-error" role="alert"></div>${postAttachmentPicker('file', true, slots)}
+        <div class="form-footer">
+            <button type="button" class="button button-ghost" data-action="close-dialog">${tx('ui.common.close')}</button>
+            <button type="submit" class="button button-primary" ${slots ? '' : 'disabled'}>${icon('upload')}${tx('ui.attachment.upload_files')}</button>
+        </div>
+    </form>`, false, 'paperclip');
+    const form = $('[data-form="attachment"]', dialog);
+    const picker = $('.wx-attachment-picker', form);
+    postAttachmentQueues.set(picker, queue);
+    renderPostAttachmentQueue(picker);
+    return form;
+}
+
+async function uploadPostAttachmentQueue(form) {
+    const picker = $('.wx-attachment-picker', form);
+    const queue = postAttachmentQueue(picker);
+    const status = $('[data-attachment-status]', picker);
+    const submitButton = $('button[type="submit"]', form);
+    const total = queue.length;
+    let sent = 0;
+    let summary = '';
+    form.dataset.uploading = picker.dataset.uploading = '1';
+    submitButton.disabled = true;
+    $('[data-attachment-error]', picker).textContent = '';
+    renderPostAttachmentQueue(picker);
+    try {
+        for (const [index, entry] of [...queue].entries()) {
+            if (!form.isConnected || !dialog.open) break;
+            status.textContent = tr('ui.attachment.sending', {current: index + 1, total, name: entry.file.name});
+            const body = new FormData();
+            body.append('file', entry.file);
+            body.append('upload_key', entry.key);
+            try {
+                await request(`/api/posts/${Number(form.dataset.id)}/attachments`, {
+                    method: 'POST', body, signal: AbortSignal.timeout?.(60000)
+                });
+                queue.splice(queue.indexOf(entry), 1);
+                picker.dataset.slots = Math.max(0, Number(picker.dataset.slots) - 1);
+                sent++;
+            } catch (error) {
+                entry.error = !error.status || error.status >= 500 ? tr('ui.attachment.upload_uncertain') : error.message;
+                if ([401, 403, 404, 429].includes(error.status)) break;
+            }
+            renderPostAttachmentQueue(picker);
+        }
+        summary = tr('ui.attachment.upload_result', {sent, total});
+        const active = form.isConnected && dialog.open;
+        if (active && !queue.length) closeDialog();
+        if (sent > 0) toast(summary);
+        const route = routeInfo();
+        if (route.name === 'thread' && route.id === Number(form.dataset.thread) && sent > 0) await navigate();
+    } finally {
+        form.dataset.uploading = picker.dataset.uploading = '0';
+        renderPostAttachmentQueue(picker, summary);
+        submitButton.disabled = !queue.length && Number(picker.dataset.slots) === 0;
+    }
+}
 function previewAttachment(button, id) {
     const name = button.dataset.name;
     modal(tr('ui.attachment.preview'), name, `<div class="wx-attachment-preview">
@@ -2182,10 +2286,14 @@ case 'edit-post':editPostModal(id);break;
 case 'refresh-edit-source':await refreshEditSource(button);break;
 case 'attach-post':attachmentModal(id);break;
 case 'preview-attachment':previewAttachment(button,id);break;
-case 'clear-post-attachment': {
-    const input = $('[data-post-attachment]', button.closest('.wx-attachment-picker'));
-    clearPostAttachment(input);
-    input.focus();
+case 'remove-post-attachment': {
+    const picker = button.closest('.wx-attachment-picker');
+    const queue = postAttachmentQueue(picker);
+    const index = queue.findIndex(item => item.key === button.dataset.key);
+    if (index !== -1) queue.splice(index, 1);
+    $('[data-attachment-error]', picker).textContent = '';
+    renderPostAttachmentQueue(picker);
+    ($$('[data-action="remove-post-attachment"]', picker)[Math.min(index, queue.length - 1)] || $('[data-post-attachment]', picker)).focus();
     break;
 }
 case 'delete-post':confirmModal(tr('ui.post.delete_title'),tr('ui.post.delete_body'),tr('ui.post.delete_button'),async()=>{await request(`/api/posts/${id}`,{method:'DELETE'});closeDialog();await navigate();toast(tr('ui.post.deleted'));});break;
@@ -2227,7 +2335,7 @@ case 'category-visibility': {
 }
 }}
 
-document.addEventListener('click',async event=>{const button=event.target.closest('[data-action]');if(!button||button.disabled)return;if(button.tagName!=='A')event.preventDefault();if(button.dataset.busy==='1')return;const immediate=['toggle-menu','close-menu','appearance','reset-appearance','login','register','account','change-password','close-dialog','close-on-nav','new-topic','discard-draft','overwrite-draft','quick-search','thread-post-search','thread-post-search-result','sort','page','quote','edit-post','attach-post','preview-attachment','clear-post-attachment','delete-post','delete-thread','delete-shout','format','editor-preview','copy-code','wrap-code','message-reply','admin-tab','ban-user','group-delete','new-category','edit-category','category-visibility'];const busy=!immediate.includes(button.dataset.action);try{if(busy){button.dataset.busy='1';button.setAttribute('aria-busy','true');button.disabled=true;}await handleAction(button,event);}catch(err){toast(err.message,true);if(err.status===401){state.user=null;setUnreadMessages(0,-Infinity);authModal('login');}}finally{if(busy){button.dataset.busy='0';button.removeAttribute('aria-busy');button.disabled=false;}}});
+document.addEventListener('click',async event=>{const button=event.target.closest('[data-action]');if(!button||button.disabled)return;if(button.tagName!=='A')event.preventDefault();if(button.dataset.busy==='1')return;const immediate=['toggle-menu','close-menu','appearance','reset-appearance','login','register','account','change-password','close-dialog','close-on-nav','new-topic','discard-draft','overwrite-draft','quick-search','thread-post-search','thread-post-search-result','sort','page','quote','edit-post','attach-post','preview-attachment','remove-post-attachment','delete-post','delete-thread','delete-shout','format','editor-preview','copy-code','wrap-code','message-reply','admin-tab','ban-user','group-delete','new-category','edit-category','category-visibility'];const busy=!immediate.includes(button.dataset.action);try{if(busy){button.dataset.busy='1';button.setAttribute('aria-busy','true');button.disabled=true;}await handleAction(button,event);}catch(err){toast(err.message,true);if(err.status===401){state.user=null;setUnreadMessages(0,-Infinity);authModal('login');}}finally{if(busy){button.dataset.busy='0';button.removeAttribute('aria-busy');button.disabled=false;}}});
 
 async function submitForm(form){const type=form.dataset.form;const values=Object.fromEntries(new FormData(form).entries());switch(type){
 case 'page-jump': {
@@ -2285,7 +2393,32 @@ case 'private-message-reply': {
     break;
 }
 case 'shout':{if(!values.body?.trim())return;const r=await request('/api/shouts',{method:'POST',body:{body:values.body.trim()}});$('input[name=body]',form).value='';if(r.shout&&!state.shouts.some(s=>s.id===r.shout.id)){state.shouts.push(r.shout);state.lastShoutId=Math.max(state.lastShoutId,Number(r.shout.id));state.shouts=state.shouts.slice(-100);paintShouts();}else await refreshShouts();$$('[data-shout-list]').forEach(el=>el.scrollTop=el.scrollHeight);}break;
-case 'new-topic':{const submitted=draftSnapshot(form);saveDraft(form);const file=$('input[name=attachment]',form)?.files[0];const r=await request('/api/threads',{method:'POST',body:{title:values.title,category_id:Number(values.category_id),body:values.body}});clearPublishedDraft(form,submitted);closeDialog();const threadId=r.thread.id;location.hash='/thread/'+threadId;window.scrollTo({top:0,behavior:'instant'});toast(tr('ui.topic.published'));if(file){try{const detail=await request(`/api/threads/${threadId}`);const first=detail.posts?.[0];if(!first)throw new Error(tr('ui.topic.first_post_missing'));const fd=new FormData();fd.append('file',file);await request(`/api/posts/${first.id}/attachments`,{method:'POST',body:fd});if(state.route?.name==='thread'&&state.route.id===threadId)await navigate();toast(tr('ui.attachment.added'));}catch(err){toast(tr('ui.topic.attachment_failed',{message:err.message}),true);}}await updateStats();}break;
+case 'new-topic': {
+    const submitted = draftSnapshot(form);
+    saveDraft(form);
+    const result = await request('/api/threads', {method: 'POST', body: {
+        title: values.title, category_id: Number(values.category_id), body: values.body
+    }});
+    const queue = [...postAttachmentQueue($('.wx-attachment-picker', form))];
+    clearPublishedDraft(form, submitted);
+    const threadId = Number(result.thread.id);
+    toast(tr('ui.topic.published'));
+    try {
+        if (form.isConnected && dialog.open) {
+            if (queue.length && result.post_id) {
+                await uploadPostAttachmentQueue(attachmentModal(Number(result.post_id), threadId, queue));
+            } else {
+                closeDialog();
+                if (queue.length) toast(tr('ui.topic.attachment_failed', {message: tr('ui.topic.first_post_missing')}), true);
+            }
+        }
+    } finally {
+        location.hash = '/thread/' + threadId;
+        window.scrollTo({top: 0, behavior: 'instant'});
+    }
+    await updateStats();
+    break;
+}
 case 'reply': {
     const id = Number(form.dataset.thread);
     const submitted = draftSnapshot(form);
@@ -2319,7 +2452,7 @@ case 'edit-post': {
     toast(tr('ui.post.saved'));
     break;
 }
-case 'attachment':{const fd=new FormData();fd.append('file',$('input[name=file]',form).files[0]);await request(`/api/posts/${Number(form.dataset.id)}/attachments`,{method:'POST',body:fd});closeDialog();await navigate();toast(tr('ui.attachment.added'));}break;
+case 'attachment':await uploadPostAttachmentQueue(form);break;
 case 'profile':await request('/api/profile',{method:'PATCH',body:{name:values.name,bio:values.bio,allow_private_messages:!!$('input[name=allow_private_messages]',form)?.checked}});await loadBootstrap();renderProfile();toast(tr('ui.profile.saved'));break;
 case 'settings':{values.registration_open=!!$('input[name=registration_open]',form).checked;await request('/api/admin/settings',{method:'PATCH',body:values});await loadBootstrap();await refreshAdmin();toast(tr('ui.admin.settings_saved'));}break;
 case 'category': {
@@ -2370,13 +2503,10 @@ document.addEventListener('submit', async event => {
     const form = event.target;
     if (!form.dataset.form) return;
     event.preventDefault();
-    if (form.dataset.busy === '1') return;
+    if (form.dataset.busy === '1' || form.dataset.uploading === '1') return;
 
-    const attachment = $('[data-post-attachment]', form);
-    if (attachment && !updatePostAttachment(attachment)) {
-        attachment.reportValidity();
-        return;
-    }
+    const attachment = $('.wx-attachment-picker', form);
+    if (attachment && !validatePostAttachmentQueue(attachment)) return;
     form.dataset.busy = '1';
     const error = $('.form-error', form);
     if (error) error.textContent = '';
@@ -2452,13 +2582,21 @@ document.addEventListener('change', event => {
     if (event.target.id === 'following-category') {
         event.target.form.requestSubmit();
     } else if (event.target.matches('[data-post-attachment]')) {
-        updatePostAttachment(event.target);
+        const input = event.target;
+        const files = Array.from(input.files);
+        input.value = '';
+        addPostAttachments(input, files);
     }
 });
 document.addEventListener('dragover', event => {
     const zone = event.target.closest('[data-attachment-drop]');
     if (!zone || !event.dataTransfer?.types.includes('Files')) return;
     event.preventDefault();
+    const input = $('[data-post-attachment]', zone);
+    if (input.disabled || input.form.dataset.busy === '1') {
+        event.dataTransfer.dropEffect = 'none';
+        return;
+    }
     event.dataTransfer.dropEffect = 'copy';
     zone.classList.add('wx-attachment-dragging');
 });
@@ -2473,19 +2611,7 @@ document.addEventListener('drop', event => {
     const files = event.dataTransfer?.files;
     if (!files?.length) return;
     event.preventDefault();
-    const input = $('[data-post-attachment]', zone);
-    const feedback = $('[data-attachment-error]', zone.closest('.wx-attachment-picker'));
-    if (files.length !== 1) {
-        feedback.textContent = tr('ui.attachment.drop_one');
-        return;
-    }
-    try {
-        input.files = files;
-    } catch (_) {
-        feedback.textContent = tr('ui.attachment.drop_unavailable');
-        return;
-    }
-    updatePostAttachment(input);
+    addPostAttachments($('[data-post-attachment]', zone), Array.from(files));
 });
 dialog.addEventListener('click',event=>{if(event.target===dialog){const r=dialog.getBoundingClientRect();if(event.clientX<r.left||event.clientX>r.right||event.clientY<r.top||event.clientY>r.bottom)closeDialog();}});
 document.addEventListener('keydown', event => {

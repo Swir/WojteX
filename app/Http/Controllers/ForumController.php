@@ -156,7 +156,7 @@ class ForumController extends Controller
         $category=DB::table('categories')->find($data['category_id']);
         abort_unless($category && Forum::canSeeCategory($category,$request->user()),404,__('server.category_not_found'));
         abort_unless(Forum::canCreateCategory($category,$request->user()),403,__('server.category_post_forbidden'));
-        $id=DB::transaction(function() use($data,$request) {
+        [$id, $postId]=DB::transaction(function() use($data,$request) {
             // Account bans can commit after category/preflight checks while the
             // request still holds an old User object. Require a live, unbanned
             // creator in the same INSERT statement; zero rows means no thread,
@@ -170,11 +170,11 @@ class ForumController extends Controller
             );
             abort_unless($inserted === 1,403,__('server.account_blocked'));
             $id=(int) DB::connection()->getPdo()->lastInsertId();
-            DB::table('posts')->insert(['thread_id'=>$id,'user_id'=>$actorId,'body'=>$data['body'],'body_format'=>'markdown','created_at'=>now(),'updated_at'=>now()]);
-            return $id;
+            $postId=DB::table('posts')->insertGetId(['thread_id'=>$id,'user_id'=>$actorId,'body'=>$data['body'],'body_format'=>'markdown','created_at'=>now(),'updated_at'=>now()]);
+            return [$id, (int) $postId];
         });
         Event::dispatch('veyra.thread.created',[$id,$request->user()->id]);
-        return response()->json(['thread'=>Forum::threadData(Forum::thread($id,$request->user()))],201);
+        return response()->json(['thread'=>Forum::threadData(Forum::thread($id,$request->user())), 'post_id' => $postId],201);
     }
 
     public function show(Request $request,int $id)

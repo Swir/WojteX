@@ -55,11 +55,13 @@ class AttachmentUploadAuthorizationTest extends TestCase
         return [$thread,$post];
     }
 
-    private function send(int $post)
+    private function send(int $post, ?string $key = null)
     {
-        return $this->post('/api/posts/'.$post.'/attachments',[
+        $data = [
             'file'=>UploadedFile::fake()->create('safe.txt',1,'text/plain'),
-        ],['Accept'=>'application/json']);
+        ];
+        if ($key !== null) $data['upload_key'] = $key;
+        return $this->post('/api/posts/'.$post.'/attachments', $data, ['Accept'=>'application/json']);
     }
 
     public function test_owner_can_upload_five_attachments_but_not_six(): void
@@ -72,6 +74,24 @@ class AttachmentUploadAuthorizationTest extends TestCase
         $this->send($post)->assertUnprocessable();
         $this->assertDatabaseCount('attachments',5);
         $this->assertCount(5,Storage::disk('local')->allFiles('attachments'));
+    }
+
+    public function test_retry_reuses_the_same_attachment_even_when_the_post_is_full(): void
+    {
+        $owner = $this->account('Queue writer');
+        [, $post] = $this->createPostFixture($owner);
+        $this->actingAs($owner);
+        $key = str_repeat('a', 32);
+        $created = $this->send($post, $key)->assertCreated()->json();
+        for ($i = 0; $i < 4; $i++) $this->send($post)->assertCreated();
+
+        $this->send($post, $key)->assertOk()->assertExactJson($created);
+        $this->send($post, str_repeat('b', 32))->assertUnprocessable();
+        $this->assertDatabaseCount('attachments', 5);
+        $this->assertCount(5, Storage::disk('local')->allFiles('attachments'));
+
+        $this->actingAs($this->account('Other writer'))->send($post, $key)->assertForbidden();
+        $this->assertDatabaseCount('attachments', 5);
     }
 
     public function test_stale_session_ban_and_moderator_demotion_cannot_upload_or_leave_file(): void

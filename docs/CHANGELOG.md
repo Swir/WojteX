@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Queue several files for a new topic or an existing post. Remove individual files, see upload progress and retry files left in the queue if sending is interrupted.
 - Change your password from your account settings. The current session stays signed in, and other sessions and earlier recovery links are invalidated.
 - Find categories in the admin panel by name, description, slug or parent path. The visibility filter includes restrictions inherited from parent categories, and both filters stay active after saving changes.
 - Create subcategories and move categories with their topics and subcategories from the admin panel. The category list shows parent paths and inherited access restrictions.
